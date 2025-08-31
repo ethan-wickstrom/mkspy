@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
+from abc import ABC, abstractmethod
 import random
 
 from .model import (
@@ -36,10 +36,16 @@ def ensure_forward(program: DSPyProgram) -> DSPyMethod:
     return f
 
 
-@dataclass
-class Mutation:
+class Mutation(ABC):
     name: str
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    @abstractmethod
     def applicable(self, p: DSPyProgram) -> bool: ...
+
+    @abstractmethod
     def apply(self, p: DSPyProgram, rng: RNG) -> None: ...
 
 
@@ -79,8 +85,8 @@ class AddSignature(Mutation):
                 DSPySignature(
                     name=sd["name"],
                     docstring=sd.get("docstring", ""),
-                    inputs=[DSPyField(**fd) for fd in sd.get("inputs", [])],
-                    outputs=[DSPyField(**fd) for fd in sd.get("outputs", [])],
+                    inputs=[_mk_field(fd) for fd in sd.get("inputs", [])],
+                    outputs=[_mk_field(fd) for fd in sd.get("outputs", [])],
                 )
             )
 
@@ -176,3 +182,14 @@ class RandomRNG:
     def random(self) -> float: return self._r.random()
     def choice(self, seq): return self._r.choice(seq)
     def randint(self, a: int, b: int) -> int: return self._r.randint(a, b)
+
+
+def _mk_field(fd: dict[str, object]) -> DSPyField:
+    if "name" not in fd or not isinstance(fd["name"], str):
+        raise ValueError("Field missing required 'name' string")
+    return DSPyField(
+        name=fd["name"],
+        field_type=fd.get("field_type", "str"),  # type: ignore[arg-type]
+        description=fd.get("description", ""),   # type: ignore[arg-type]
+        is_input=bool(fd.get("is_input", True)),
+    )

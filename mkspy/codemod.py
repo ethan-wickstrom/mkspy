@@ -58,7 +58,7 @@ class _PreScan(cst.CSTVisitor):
     def visit_Import(self, node: cst.Import) -> None:
         for alias in node.names:
             if isinstance(alias.name, cst.Name) and alias.name.value == "ast":
-                if alias.asname:
+                if alias.asname and isinstance(alias.asname.name, cst.Name):
                     self.ast_aliases.add(alias.asname.name.value)
 
     def visit_ImportFrom(self, node: cst.ImportFrom) -> None:
@@ -81,8 +81,15 @@ class _Scan(cst.CSTVisitor):
 
     def visit_ImportFrom(self, node: cst.ImportFrom) -> None:
         if isinstance(node.module, cst.Name) and node.module.value == "ast":
-            for alias in node.names or []:
-                if isinstance(alias, cst.ImportAlias) and isinstance(alias.name, cst.Name):
+            names_list: List[cst.ImportAlias] = []
+            if node.names is None:
+                names_list = []
+            elif isinstance(node.names, cst.ImportStar):
+                names_list = []
+            else:
+                names_list = list(node.names)
+            for alias in names_list:
+                if isinstance(alias.name, cst.Name):
                     self.record.from_ast_imports.append(alias.name.value)
             self.record.lines.append(self.get_metadata(PositionProvider, node).start.line)
 
@@ -120,7 +127,9 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
 
     # -- imports --
 
-    def leave_Import(self, original_node: cst.Import, updated_node: cst.Import) -> cst.BaseStatement:
+    def leave_Import(
+        self, original_node: cst.Import, updated_node: cst.Import
+    ) -> cst.Import | cst.RemovalSentinel:
         new_names = []
         changed = False
         for alias in updated_node.names:
@@ -132,7 +141,9 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
                 new_names.append(alias)
         return updated_node.with_changes(names=tuple(new_names)) if changed else updated_node
 
-    def leave_ImportFrom(self, original_node: cst.ImportFrom, updated_node: cst.ImportFrom) -> cst.BaseStatement:
+    def leave_ImportFrom(
+        self, original_node: cst.ImportFrom, updated_node: cst.ImportFrom
+    ) -> cst.ImportFrom | cst.FlattenSentinel[cst.BaseSmallStatement] | cst.RemovalSentinel:
         if not isinstance(updated_node.module, cst.Name) or updated_node.module.value != "ast":
             return updated_node
 
@@ -140,10 +151,15 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
         to_map = {"NodeVisitor": "CSTVisitor", "NodeTransformer": "CSTTransformer"}
         keep: List[cst.ImportAlias] = []
         add_for_libcst: List[cst.ImportAlias] = []
-        for alias in (updated_node.names or []):
-            if not isinstance(alias, cst.ImportAlias):
-                keep.append(alias)
-                continue
+        names_list: List[cst.ImportAlias] = []
+        if updated_node.names is None:
+            names_list = []
+        elif isinstance(updated_node.names, cst.ImportStar):
+            names_list = []
+        else:
+            names_list = list(updated_node.names)
+
+        for alias in names_list:
             if isinstance(alias.name, cst.Name) and alias.name.value in to_map:
                 target = to_map[alias.name.value]
                 if alias.asname:
@@ -153,20 +169,18 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
             else:
                 keep.append(alias)
 
-        stmts: List[cst.BaseStatement] = []
+        small_stmts: List[cst.BaseSmallStatement] = []
         if keep:
-            stmts.append(
-                cst.SimpleStatementLine(
-                    body=[updated_node.with_changes(module=cst.Name("libcst"), names=tuple(keep))]
-                )
+            small_stmts.append(
+                updated_node.with_changes(module=cst.Name("libcst"), names=tuple(keep))
             )
         if add_for_libcst:
-            stmts.append(
-                cst.SimpleStatementLine(
-                    body=[cst.ImportFrom(module=cst.Name("libcst"), names=tuple(add_for_libcst))]
-                )
+            small_stmts.append(
+                cst.ImportFrom(module=cst.Name("libcst"), names=tuple(add_for_libcst))
             )
-        return cst.FlattenSentinel(tuple(stmts) or (cst.RemoveFromParent(),))
+        if small_stmts:
+            return cst.FlattenSentinel(tuple(small_stmts))
+        return cst.RemoveFromParent()
 
     # -- attribute replacements --
 

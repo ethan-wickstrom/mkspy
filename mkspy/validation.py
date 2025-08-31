@@ -92,7 +92,7 @@ def prune_unused_imports(code: str) -> str:
         return code
 
     w = MetadataWrapper(module)
-    ranges = w.resolve(PositionProvider)
+    w.resolve(PositionProvider)
     scopes = w.resolve(ScopeProvider)
 
     # Collect unused import names grouped by import node (Import/ImportFrom)
@@ -112,33 +112,53 @@ def prune_unused_imports(code: str) -> str:
     class RemoveUnusedImportTransformer(cst.CSTTransformer):
         def leave_Import(
             self, original_node: cst.Import, updated_node: cst.Import
-        ) -> cst.BaseSmallStatement:
+        ) -> cst.BaseSmallStatement | cst.RemovalSentinel:
             if original_node not in unused:
                 return updated_node
             names_to_keep = []
             for alias in updated_node.names:
-                name_value = alias.asname.name.value if alias.asname else alias.name.value
-                if name_value not in unused[original_node]:
-                    names_to_keep.append(alias.with_changes(comma=cst.MaybeSentinel.DEFAULT))
+                sym = ""
+                if alias.asname and isinstance(alias.asname.name, cst.Name):
+                    sym = alias.asname.name.value
+                else:
+                    if isinstance(alias.name, cst.Name):
+                        sym = alias.name.value
+                    elif isinstance(alias.name, cst.Attribute) and isinstance(alias.name.attr, cst.Name):
+                        sym = alias.name.attr.value
+                if sym not in unused[original_node]:
+                    names_to_keep.append(
+                        alias.with_changes(comma=cst.MaybeSentinel.DEFAULT)
+                    )
             if not names_to_keep:
                 return cst.RemoveFromParent()
             return updated_node.with_changes(names=tuple(names_to_keep))
 
         def leave_ImportFrom(
             self, original_node: cst.ImportFrom, updated_node: cst.ImportFrom
-        ) -> cst.BaseSmallStatement:
+        ) -> cst.BaseSmallStatement | cst.RemovalSentinel:
             if original_node not in unused:
                 return updated_node
             # star imports cannot be partially pruned
             if isinstance(updated_node.names, cst.ImportStar):
                 return updated_node
-            kept = []
-            for alias in updated_node.names or []:
-                if not isinstance(alias, cst.ImportAlias):
-                    kept.append(alias)
-                    continue
-                name_value = alias.asname.name.value if alias.asname else alias.name.value
-                if name_value not in unused[original_node]:
+            kept: List[cst.ImportAlias] = []
+            names_list: List[cst.ImportAlias] = []
+            if updated_node.names is None:
+                names_list = []
+            elif isinstance(updated_node.names, cst.ImportStar):
+                names_list = []
+            else:
+                names_list = list(updated_node.names)
+            for alias in names_list:
+                sym = ""
+                if alias.asname and isinstance(alias.asname.name, cst.Name):
+                    sym = alias.asname.name.value
+                else:
+                    if isinstance(alias.name, cst.Name):
+                        sym = alias.name.value
+                    elif isinstance(alias.name, cst.Attribute) and isinstance(alias.name.attr, cst.Name):
+                        sym = alias.name.attr.value
+                if sym not in unused[original_node]:
                     kept.append(alias.with_changes(comma=cst.MaybeSentinel.DEFAULT))
             if not kept:
                 return cst.RemoveFromParent()

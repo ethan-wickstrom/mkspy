@@ -10,6 +10,16 @@ from .validation import validate_program, prune_unused_imports, ValidationResult
 logger = logging.getLogger(__name__)
 
 
+def _mk_field(fd: dict[str, object]) -> DSPyField:
+    if "name" not in fd or not isinstance(fd["name"], str):
+        raise ValueError("Field missing required 'name' string")
+    return DSPyField(
+        name=fd["name"],
+        field_type=fd.get("field_type", "str"),
+        description=fd.get("description", ""),
+        is_input=bool(fd.get("is_input", True)),
+    )
+
 DEFAULT_IMPORTS = [
     {"module": "dspy"},
     {"from_module": "typing", "imported_names": ["Optional", "List", "Dict", "Any"]},
@@ -60,8 +70,8 @@ class DSPyProgramEvolver:
                 DSPySignature(
                     name=s["name"],
                     docstring=s.get("docstring", ""),
-                    inputs=[DSPyField(**fd) for fd in s.get("inputs", [])],
-                    outputs=[DSPyField(**fd) for fd in s.get("outputs", [])],
+                    inputs=[_mk_field(fd) for fd in s.get("inputs", [])],
+                    outputs=[_mk_field(fd) for fd in s.get("outputs", [])],
                 )
                 for s in self.signature_library
             ],
