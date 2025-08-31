@@ -697,12 +697,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "dspy-ai" },
+    { name = "gepa" },
     { name = "libcst" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "dspy-ai", specifier = ">=3.0.2" },
+    { name = "gepa", specifier = ">=0.0.4" },
     { name = "libcst", specifier = ">=1.8.2" },
 ]
 

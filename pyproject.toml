@@ -6,5 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "dspy-ai>=3.0.2",
+    "gepa>=0.0.4",
     "libcst>=1.8.2",
 ]
