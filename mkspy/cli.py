@@ -69,6 +69,9 @@ def cmd_optimize_author(args: argparse.Namespace) -> None:
     if args.model:
         gen_lm = dspy.LM(args.model, temperature=args.temperature, max_tokens=args.max_tokens)
         dspy.configure(lm=gen_lm)
+    else:
+        print("--model is required", file=sys.stderr)
+        raise SystemExit(2)
 
     if not args.reflection_model:
         print("--reflection-model is required", file=sys.stderr)
