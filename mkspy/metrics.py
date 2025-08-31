@@ -88,12 +88,20 @@ class ProgramGenerationMetric:
         return result
 
     def _test_execution(self, code: str, test_cases: List[Dict[str, Any]]) -> Dict[str, Any]:
-        namespace: Dict[str, Any] = {}
+        namespace: Dict[str, Any] = {"dspy": dspy}
         failures: List[Dict[str, str]] = []
         passed: int = 0
         total: int = len(test_cases)
         try:
-            exec(code, namespace)
+            tree: ast.AST = ast.parse(code)
+            for node in list(tree.body):
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    module_names: List[str] = [alias.name for alias in node.names]
+                    if not all(name == "dspy" for name in module_names):
+                        raise RuntimeError(f"disallowed import: {', '.join(module_names)}")
+                    tree.body.remove(node)
+            compiled = compile(tree, "<generated>", "exec")
+            exec(compiled, {"__builtins__": {}}, namespace)
         except Exception as e:
             error_info: Dict[str, str] = {"test": "__compile__", "error": str(e)}
             failures.append(error_info)

@@ -24,7 +24,10 @@ class AddErrorHandlingMutation(SmartMutation):
         return "failed:" in feedback.lower() or "error" in feedback.lower()
 
     def apply(self, program: str, feedback: str) -> str:
-        wrapped: str = f"try:\n{program}\nexcept Exception as e:\n    raise e"
+        wrapped: str = (
+            f"try:\n{program}\nexcept Exception as e:\n"
+            "    print(f'Exception occurred: {e}')\n    raise"
+        )
         return wrapped
 
 
