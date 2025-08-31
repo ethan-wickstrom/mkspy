@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
+
+from dspy.primitives import Example, Prediction
+from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
 
 from model import (
     DSPyProgram,
@@ -308,15 +311,24 @@ def _score_generated_code(req: str, code: str) -> tuple[float, str]:
     return min(score, 1.0), msg
 
 
-def author_metric(example, prediction, trace=None, pred_name=None, pred_trace=None):
+def author_metric(
+    example: Example,
+    prediction: Prediction,
+    trace: Optional[DSPyTrace] = None,
+    pred_name: str | None = None,
+    pred_trace: Optional[DSPyTrace] = None,
+) -> ScoreWithFeedback:
     """GEPA-compatible metric with natural-language feedback.
 
-    Expects example.requirements and prediction.source (from ProgramAuthor).
+    Expects ``example.requirements`` and ``prediction.source`` (from ProgramAuthor).
     """
-    req = getattr(example, "requirements", None) or getattr(example, "input", "")
-    src = getattr(prediction, "source", "")
-    score, feedback = _score_generated_code(str(req), str(src))
-    return {"score": float(score), "feedback": feedback}
+    req: str = str(getattr(example, "requirements", None) or getattr(example, "input", ""))
+    src: str = str(getattr(prediction, "source", ""))
+    raw_score: float
+    feedback: str
+    raw_score, feedback = _score_generated_code(req, src)
+    score: float = float(raw_score)
+    return ScoreWithFeedback(score=score, feedback=feedback)
 
 
 def _examples_from_requirements(reqs: list[str]):
