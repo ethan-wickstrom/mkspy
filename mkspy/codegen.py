@@ -20,7 +20,7 @@ class CodeBuilder:
         for ln in raw.splitlines():
             self.write(ln)
 
-    def block(self) -> "_Block":
+    def block(self) -> _Block:
         return _Block(self)
 
     def render(self) -> str:

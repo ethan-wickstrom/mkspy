@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import List, Dict, Set, Optional
 
 import libcst as cst
 import libcst.matchers as m
@@ -11,7 +10,7 @@ from libcst.metadata import MetadataWrapper, PositionProvider
 logger = logging.getLogger(__name__)
 
 # A lightweight guide; your code may need bespoke translations.
-AST_TO_LIBCST_MAP: Dict[str, str] = {
+AST_TO_LIBCST_MAP: dict[str, str] = {
     "ast.parse": "cst.parse_module",
     "ast.NodeVisitor": "cst.CSTVisitor",
     "ast.NodeTransformer": "cst.CSTTransformer",
@@ -35,11 +34,11 @@ AST_TO_LIBCST_MAP: Dict[str, str] = {
 class AstUsageRecord:
     path: str
     import_ast: bool = False
-    from_ast_imports: List[str] = field(default_factory=list)
-    attr_uses: List[str] = field(default_factory=list)
-    lines: List[int] = field(default_factory=list)
+    from_ast_imports: list[str] = field(default_factory=list)
+    attr_uses: list[str] = field(default_factory=list)
+    lines: list[int] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "path": self.path,
             "import_ast": self.import_ast,
@@ -53,7 +52,7 @@ class _PreScan(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
     def __init__(self) -> None:
-        self.ast_aliases: Set[str] = {"ast"}  # will include alias names, e.g., {"ast", "pyast"}
+        self.ast_aliases: set[str] = {"ast"}  # will include alias names, e.g., {"ast", "pyast"}
 
     def visit_Import(self, node: cst.Import) -> None:
         for alias in node.names:
@@ -81,7 +80,7 @@ class _Scan(cst.CSTVisitor):
 
     def visit_ImportFrom(self, node: cst.ImportFrom) -> None:
         if isinstance(node.module, cst.Name) and node.module.value == "ast":
-            names_list: List[cst.ImportAlias] = []
+            names_list: list[cst.ImportAlias] = []
             if node.names is None:
                 names_list = []
             elif isinstance(node.names, cst.ImportStar):
@@ -121,9 +120,9 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
       * class Foo(ast.NodeVisitor) → class Foo(cst.CSTVisitor)  (also for alias or from-imports)
     """
 
-    def __init__(self, ast_aliases: Optional[Set[str]] = None) -> None:
+    def __init__(self, ast_aliases: set[str] | None = None) -> None:
         super().__init__()
-        self.ast_aliases: Set[str] = (ast_aliases or {"ast"})
+        self.ast_aliases: set[str] = (ast_aliases or {"ast"})
 
     # -- imports --
 
@@ -149,9 +148,9 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
 
         # map specific names to libcst equivalents; preserve aliases
         to_map = {"NodeVisitor": "CSTVisitor", "NodeTransformer": "CSTTransformer"}
-        keep: List[cst.ImportAlias] = []
-        add_for_libcst: List[cst.ImportAlias] = []
-        names_list: List[cst.ImportAlias] = []
+        keep: list[cst.ImportAlias] = []
+        add_for_libcst: list[cst.ImportAlias] = []
+        names_list: list[cst.ImportAlias] = []
         if updated_node.names is None:
             names_list = []
         elif isinstance(updated_node.names, cst.ImportStar):
@@ -169,7 +168,7 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
             else:
                 keep.append(alias)
 
-        small_stmts: List[cst.BaseSmallStatement] = []
+        small_stmts: list[cst.BaseSmallStatement] = []
         if keep:
             small_stmts.append(
                 updated_node.with_changes(module=cst.Name("libcst"), names=tuple(keep))

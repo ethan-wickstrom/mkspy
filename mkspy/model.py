@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from typing import Any
 
 from .codegen import CodeBuilder
 
@@ -17,10 +17,10 @@ SAFE_MODULE_TYPES = ("Predict", "ChainOfThought", "ReAct")
 
 @dataclass
 class DSPyImport:
-    module: Optional[str] = None
-    alias: Optional[str] = None
-    from_module: Optional[str] = None
-    imported_names: List[str] = field(default_factory=list)  # simple: names only
+    module: str | None = None
+    alias: str | None = None
+    from_module: str | None = None
+    imported_names: list[str] = field(default_factory=list)  # simple: names only
 
     def to_code(self) -> str:
         if self.from_module:
@@ -51,8 +51,8 @@ class DSPyField:
 class DSPySignature:
     name: str
     docstring: str = ""
-    inputs: List[DSPyField] = field(default_factory=list)
-    outputs: List[DSPyField] = field(default_factory=list)
+    inputs: list[DSPyField] = field(default_factory=list)
+    outputs: list[DSPyField] = field(default_factory=list)
 
     def to_code(self, cb: CodeBuilder) -> None:
         cb.write(f"class {self.name}(dspy.Signature):")
@@ -71,8 +71,8 @@ class DSPySignature:
 @dataclass
 class DSPyParameter:
     name: str
-    param_type: Optional[str] = None
-    default_value: Optional[str] = None
+    param_type: str | None = None
+    default_value: str | None = None
 
     def as_sig(self) -> str:
         s = self.name
@@ -109,12 +109,12 @@ class DSPyReturn(DSPyStatement):
 class DSPyMethodCall(DSPyStatement):
     target: str
     method: str = ""
-    args: List[str] = field(default_factory=list)
-    kwargs: Dict[str, str] = field(default_factory=dict)
+    args: list[str] = field(default_factory=list)
+    kwargs: dict[str, str] = field(default_factory=dict)
 
     def to_code(self, cb: CodeBuilder) -> None:
         accessor = f"{self.target}.{self.method}" if self.method else self.target
-        parts: List[str] = []
+        parts: list[str] = []
         parts.extend(self.args)
         parts.extend([f"{k}={v}" for k, v in self.kwargs.items()])
         cb.write(f"{accessor}({', '.join(parts)})")
@@ -123,8 +123,8 @@ class DSPyMethodCall(DSPyStatement):
 @dataclass
 class DSPyIf(DSPyStatement):
     condition: str
-    body: List[DSPyStatement] = field(default_factory=list)
-    else_body: List[DSPyStatement] = field(default_factory=list)
+    body: list[DSPyStatement] = field(default_factory=list)
+    else_body: list[DSPyStatement] = field(default_factory=list)
 
     def to_code(self, cb: CodeBuilder) -> None:
         cb.write(f"if {self.condition}:")
@@ -144,7 +144,7 @@ class DSPyIf(DSPyStatement):
 class DSPyFor(DSPyStatement):
     target: str
     iterable: str
-    body: List[DSPyStatement] = field(default_factory=list)
+    body: list[DSPyStatement] = field(default_factory=list)
 
     def to_code(self, cb: CodeBuilder) -> None:
         cb.write(f"for {self.target} in {self.iterable}:")
@@ -158,10 +158,10 @@ class DSPyFor(DSPyStatement):
 @dataclass
 class DSPyMethod:
     name: str
-    parameters: List[DSPyParameter] = field(default_factory=list)
-    return_type: Optional[str] = None
+    parameters: list[DSPyParameter] = field(default_factory=list)
+    return_type: str | None = None
     docstring: str = ""
-    body: List[DSPyStatement] = field(default_factory=list)
+    body: list[DSPyStatement] = field(default_factory=list)
 
     def to_code(self, cb: CodeBuilder) -> None:
         sig = ", ".join(p.as_sig() for p in self.parameters)
@@ -186,10 +186,10 @@ class DSPyMethod:
 @dataclass
 class DSPyClass:
     name: str
-    base_classes: List[str] = field(default_factory=lambda: ["dspy.Module"])
+    base_classes: list[str] = field(default_factory=lambda: ["dspy.Module"])
     docstring: str = ""
-    attrs: Dict[str, str] = field(default_factory=dict)
-    methods: List[DSPyMethod] = field(default_factory=list)
+    attrs: dict[str, str] = field(default_factory=dict)
+    methods: list[DSPyMethod] = field(default_factory=list)
 
     def to_code(self, cb: CodeBuilder) -> None:
         bases = f"({', '.join(self.base_classes)})" if self.base_classes else ""
@@ -216,15 +216,15 @@ class DSPySignatureBinding:
     module_name: str
     signature_name: str
     module_type: str = "Predict"
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class DSPyProgram:
-    imports: List[DSPyImport] = field(default_factory=list)
-    signatures: List[DSPySignature] = field(default_factory=list)
-    main_class: Optional[DSPyClass] = None
-    bound_modules: List[DSPySignatureBinding] = field(default_factory=list)
+    imports: list[DSPyImport] = field(default_factory=list)
+    signatures: list[DSPySignature] = field(default_factory=list)
+    main_class: DSPyClass | None = None
+    bound_modules: list[DSPySignatureBinding] = field(default_factory=list)
     program_var: str = "program"
 
     # ----------- codegen ------------

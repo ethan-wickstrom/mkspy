@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Dict, Set
 
 import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider, ScopeProvider
@@ -15,11 +14,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ValidationResult:
     ok: bool
-    errors: List[str]
+    errors: list[str]
 
 
 def validate_program(program: DSPyProgram) -> ValidationResult:
-    errors: List[str] = []
+    errors: list[str] = []
     if program.main_class is None:
         return ValidationResult(False, ["Program is missing a main class."])
 
@@ -97,7 +96,7 @@ def prune_unused_imports(code: str) -> str:
 
     # Collect unused import names grouped by import node (Import/ImportFrom)
     from collections import defaultdict
-    unused: Dict[cst.CSTNode, Set[str]] = defaultdict(set)
+    unused: dict[cst.CSTNode, set[str]] = defaultdict(set)
 
     # Convert maps to a per-node view
     all_scopes = set(scopes.values())
@@ -141,8 +140,8 @@ def prune_unused_imports(code: str) -> str:
             # star imports cannot be partially pruned
             if isinstance(updated_node.names, cst.ImportStar):
                 return updated_node
-            kept: List[cst.ImportAlias] = []
-            names_list: List[cst.ImportAlias] = []
+            kept: list[cst.ImportAlias] = []
+            names_list: list[cst.ImportAlias] = []
             if updated_node.names is None:
                 names_list = []
             elif isinstance(updated_node.names, cst.ImportStar):

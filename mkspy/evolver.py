@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from .model import DSPyProgram, DSPyClass, DSPyMethod, DSPyParameter, DSPySignature, DSPyField, DSPyImport
 from .mutations import default_mutations, RandomRNG, RNG, Mutation
@@ -48,16 +48,16 @@ class DSPyProgramEvolver:
     """
     def __init__(
         self,
-        import_library: Optional[List[Dict[str, Any]]] = None,
-        signature_library: Optional[List[Dict[str, Any]]] = None,
-        module_library: Optional[List[Dict[str, Any]]] = None,
-        seed: Optional[int] = None,
+        import_library: list[dict[str, Any]] | None = None,
+        signature_library: list[dict[str, Any]] | None = None,
+        module_library: list[dict[str, Any]] | None = None,
+        seed: int | None = None,
     ) -> None:
         self.import_library = import_library or DEFAULT_IMPORTS
         self.signature_library = signature_library or DEFAULT_SIGNATURES
         self.module_library = module_library or DEFAULT_MODULES
         self.rng: RNG = RandomRNG(seed)
-        self._mutations: List[Mutation] = default_mutations(
+        self._mutations: list[Mutation] = default_mutations(
             self.import_library, self.signature_library, self.module_library
         )
 

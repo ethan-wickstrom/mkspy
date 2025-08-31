@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from abc import ABC, abstractmethod
 import random
 
@@ -50,7 +50,7 @@ class Mutation(ABC):
 
 
 class AddImport(Mutation):
-    def __init__(self, candidates: List[Dict[str, Any]]):
+    def __init__(self, candidates: list[dict[str, Any]]):
         super().__init__("AddImport")
         self.candidates = candidates
 
@@ -71,7 +71,7 @@ class AddImport(Mutation):
 
 
 class AddSignature(Mutation):
-    def __init__(self, candidates: List[Dict[str, Any]]):
+    def __init__(self, candidates: list[dict[str, Any]]):
         super().__init__("AddSignature")
         self.candidates = candidates
 
@@ -92,7 +92,7 @@ class AddSignature(Mutation):
 
 
 class BindModule(Mutation):
-    def __init__(self, candidates: List[Dict[str, Any]]):
+    def __init__(self, candidates: list[dict[str, Any]]):
         super().__init__("BindModule")
         self.candidates = candidates
 
@@ -163,9 +163,9 @@ class AddControlFlow(Mutation):
             fwd.body.append(stmt)
 
 
-def default_mutations(import_lib: List[Dict[str, Any]],
-                      signature_lib: List[Dict[str, Any]],
-                      module_lib: List[Dict[str, Any]]) -> List[Mutation]:
+def default_mutations(import_lib: list[dict[str, Any]],
+                      signature_lib: list[dict[str, Any]],
+                      module_lib: list[dict[str, Any]]) -> list[Mutation]:
     return [
         AddImport(import_lib),
         AddSignature(signature_lib),
@@ -177,7 +177,7 @@ def default_mutations(import_lib: List[Dict[str, Any]],
 
 class RandomRNG:
     """Default RNG wrapper (allows swapping with a deterministic one)."""
-    def __init__(self, seed: Optional[int] = None) -> None:
+    def __init__(self, seed: int | None = None) -> None:
         self._r = random.Random(seed)
     def random(self) -> float: return self._r.random()
     def choice(self, seq): return self._r.choice(seq)
