@@ -108,7 +108,7 @@ def cmd_optimize_author(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser("dspy-evolver")
+    p = argparse.ArgumentParser("mkspy")
     sub = p.add_subparsers(required=True)
 
     s = sub.add_parser("scan", help="Scan a tree for built-in `ast` usage")
