@@ -9,3 +9,8 @@ dependencies = [
     "gepa>=0.0.4",
     "libcst>=1.8.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]
