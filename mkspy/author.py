@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .model import (
+from model import (
     DSPyProgram,
     DSPyImport,
     DSPySignature,
@@ -14,8 +14,8 @@ from .model import (
     DSPyReturn,
     DSPySignatureBinding,
 )
-from .validation import prune_unused_imports
-from .codemod import codemod_ast_to_libcst
+from validation import prune_unused_imports
+from codemod import codemod_ast_to_libcst
 
 
 def _baseline_signature(requirements: str) -> DSPySignature:

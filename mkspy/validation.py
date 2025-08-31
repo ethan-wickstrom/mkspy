@@ -7,7 +7,7 @@ import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider, ScopeProvider
 import libcst.metadata.scope_provider as sp
 
-from .model import DSPyProgram
+from model import DSPyProgram
 
 logger = logging.getLogger(__name__)
 

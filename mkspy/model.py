@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from .codegen import CodeBuilder
+from codegen import CodeBuilder
 
 logger = logging.getLogger(__name__)
 
