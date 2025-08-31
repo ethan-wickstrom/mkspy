@@ -12,7 +12,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.3.0",
     "pytest>=8.4.1",
+    "pyupgrade>=3.20.0",
     "ruff>=0.12.11",
 ]
 
@@ -125,11 +127,11 @@ unresolved-global = "error"
 # Deprecated features - warn to encourage modern code
 deprecated = "warn"
 
-# Potentially unbound elements - warn as they might be intentional
-possibly-unbound-attribute = "warn"
-possibly-unbound-implicit-call = "warn"
-possibly-unbound-import = "warn"
-possibly-unresolved-reference = "warn"
+# Potentially unbound elements
+possibly-unbound-attribute = "error"
+possibly-unbound-implicit-call = "error"
+possibly-unbound-import = "error"
+possibly-unresolved-reference = "error"
 
 # Code quality issues - warn but don't fail
 redundant-cast = "warn"
