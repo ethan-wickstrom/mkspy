@@ -6,8 +6,8 @@ import json
 import dspy
 from dspy import GEPA
 
-from .meta_module import DSPyProgramGenerator
-from .metrics import ProgramGenerationMetric
+from meta_module import DSPyProgramGenerator
+from metrics import ProgramGenerationMetric
 
 
 class GEPAEvolver:
