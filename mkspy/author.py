@@ -133,3 +133,135 @@ def get_program_author(lm: Any | None = None) -> Any:
 
     return ProgramAuthor()
 
+
+# -----------------------
+# GEPA optimization setup
+# -----------------------
+
+def _score_generated_code(req: str, code: str) -> tuple[float, str]:
+    """Heuristic structural scorer with natural language feedback.
+
+    Criteria (sum to <= 1.0):
+    - Parsable by LibCST (0.2)
+    - Has `import dspy` (0.1)
+    - Has a Signature subclass (0.2)
+    - Has a Module subclass (0.2)
+    - Has forward method (0.1)
+    - Exports a program var (0.1)
+    - Wires a DSPy module (Predict/CoT/ReAct) (0.1)
+    """
+    import libcst as cst
+
+    score = 0.0
+    notes: list[str] = []
+
+    try:
+        _ = cst.parse_module(code)
+        score += 0.2
+    except Exception as e:
+        notes.append(f"Parse error: {e}")
+
+    if "import dspy" in code:
+        score += 0.1
+    else:
+        notes.append("Missing `import dspy`.")
+
+    if "(dspy.Signature):" in code or "(dspy.Signature):" in code.replace(" ", ""):
+        score += 0.2
+    elif "class" in code and "Signature" in code:
+        score += 0.1
+        notes.append("Signature subclass found but shape uncertain.")
+    else:
+        notes.append("Missing `class <Name>(dspy.Signature)`.")
+
+    if "(dspy.Module):" in code or "(dspy.Module):" in code.replace(" ", ""):
+        score += 0.2
+    else:
+        notes.append("Missing `class <Name>(dspy.Module)`.")
+
+    if "def forward(" in code:
+        score += 0.1
+    else:
+        notes.append("Missing `def forward(...)`.")
+
+    if "program = " in code and "()" in code:
+        score += 0.1
+    else:
+        notes.append("Missing `program = <MainClass>()` export.")
+
+    if any(k in code for k in ("dspy.Predict(", "dspy.ChainOfThought(", "dspy.ReAct(")):
+        score += 0.1
+    else:
+        notes.append("No DSPy module constructed (Predict/ChainOfThought/ReAct).")
+
+    msg = "OK" if not notes else "\n".join(notes)
+    return min(score, 1.0), msg
+
+
+def author_metric(example, prediction, trace=None, pred_name=None, pred_trace=None):
+    """GEPA-compatible metric with natural-language feedback.
+
+    Expects example.requirements and prediction.source (from ProgramAuthor).
+    """
+    req = getattr(example, "requirements", None) or getattr(example, "input", "")
+    src = getattr(prediction, "source", "")
+    score, feedback = _score_generated_code(str(req), str(src))
+    return {"score": float(score), "feedback": feedback}
+
+
+def _examples_from_requirements(reqs: list[str]):
+    import importlib
+    dspy = importlib.import_module("dspy")
+    out = []
+    for r in reqs:
+        ex = dspy.Example(requirements=r).with_inputs("requirements")
+        out.append(ex)
+    return out
+
+
+def default_author_trainset() -> list[Any]:
+    reqs = [
+        "Write a DSPy program that echoes input text to result.",
+        "Create a DSPy program with a signature question->answer and a module that returns a prediction.",
+        "Produce a minimal DSPy program exposing `program = <Main>()` with a forward method.",
+        "Build a DSPy program that binds dspy.Predict to a signature and calls it in forward.",
+    ]
+    return _examples_from_requirements(reqs)
+
+
+def optimize_program_author(
+    *,
+    trainset: list[Any] | None = None,
+    valset: list[Any] | None = None,
+    gen_model: Any | None = None,
+    reflection_lm: Any | None = None,
+    gepa_kwargs: dict[str, Any] | None = None,
+):
+    """Optimize the Author agent using GEPA and return the optimized module.
+
+    - gen_model: dspy.LM used to run the author during eval
+    - reflection_lm: dspy.LM used by GEPA to reflect and propose updates
+    - gepa_kwargs: forwarded to GEPA (e.g., max_metric_calls, num_threads)
+    """
+    import importlib
+    from dspy import GEPA  # noqa: F401
+
+    dspy = importlib.import_module("dspy")
+
+    if gen_model is not None:
+        dspy.configure(lm=gen_model)
+
+    student = get_program_author(lm=gen_model)
+
+    tr = trainset or default_author_trainset()
+    va = valset or tr
+
+    if reflection_lm is None:
+        raise ValueError("reflection_lm must be provided (e.g., dspy.LM('gpt-5', ...))")
+
+    kw = dict(gepa_kwargs or {})
+    kw.setdefault("max_metric_calls", 100)
+    kw.setdefault("num_threads", 4)
+
+    tele = dspy.GEPA(metric=author_metric, reflection_lm=reflection_lm, **kw)
+    return tele.compile(student, trainset=tr, valset=va)

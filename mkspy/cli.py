@@ -7,7 +7,7 @@ from pathlib import Path
 from .evolver import DSPyProgramEvolver
 from .validation import prune_unused_imports
 from .codemod import scan_code_for_ast_usage, codemod_ast_to_libcst
-from .author import get_program_author
+from .author import get_program_author, optimize_program_author, default_author_trainset
 
 
 def _iter_py_files(root: Path):
@@ -81,6 +81,65 @@ def cmd_author(args: argparse.Namespace) -> None:
     print(pred.source, end="")
 
 
+def _load_requirements_lines(path: str) -> list[str]:
+    return [ln.strip() for ln in Path(path).read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+def cmd_optimize_author(args: argparse.Namespace) -> None:
+    try:
+        import dspy  # type: ignore
+    except Exception:
+        print("dspy must be installed to optimize the author", file=sys.stderr)
+        raise
+
+    # Gen LM
+    gen_lm = None
+    if args.model:
+        gen_lm = dspy.LM(args.model, temperature=args.temperature, max_tokens=args.max_tokens)
+        dspy.configure(lm=gen_lm)
+
+    # Reflection LM
+    if not args.reflection_model:
+        print("--reflection-model is required", file=sys.stderr)
+        raise SystemExit(2)
+    reflection_lm = dspy.LM(args.reflection_model, temperature=1.0, max_tokens=32000)
+
+    # Datasets
+    if args.train:
+        tr_reqs = _load_requirements_lines(args.train)
+        trainset = [dspy.Example(requirements=r).with_inputs("requirements") for r in tr_reqs]
+    else:
+        trainset = default_author_trainset()
+    valset = None
+    if args.val:
+        va_reqs = _load_requirements_lines(args.val)
+        valset = [dspy.Example(requirements=r).with_inputs("requirements") for r in va_reqs]
+
+    # Budget
+    gepa_kwargs = dict(max_metric_calls=args.max_metric_calls, num_threads=args.num_threads)
+
+    optimized = optimize_program_author(
+        trainset=trainset,
+        valset=valset,
+        gen_model=gen_lm,
+        reflection_lm=reflection_lm,
+        gepa_kwargs=gepa_kwargs,
+    )
+
+    # Emit once if requested
+    if args.emit:
+        req_text = Path(args.emit).read_text(encoding="utf-8") if Path(args.emit).exists() else args.emit
+        out = optimized(requirements=req_text)
+        print(out.source, end="")
+    else:
+        # Print the current optimized instruction for visibility
+        try:
+            name, pred = next(iter(optimized.named_predictors()))
+            print(pred.signature.instructions)
+        except Exception:
+            print("Optimization finished.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser("dspy-evolver")
     sub = p.add_subparsers(required=True)
@@ -110,6 +169,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--temperature", type=float, default=0.0)
     s.add_argument("--max-tokens", dest="max_tokens", type=int, default=2048)
     s.set_defaults(func=cmd_author)
+
+    s = sub.add_parser("optimize-author", help="Run GEPA to optimize the authoring agent")
+    s.add_argument("--train", help="File with training requirements (one per line)")
+    s.add_argument("--val", help="File with validation requirements (one per line)")
+    s.add_argument("--model", help="Generation model for the author (e.g., openai/gpt-4o-mini)")
+    s.add_argument("--temperature", type=float, default=0.0)
+    s.add_argument("--max-tokens", dest="max_tokens", type=int, default=2048)
+    s.add_argument("--reflection-model", required=True, help="Reflection model for GEPA (e.g., gpt-5)")
+    s.add_argument("--max-metric-calls", type=int, default=100)
+    s.add_argument("--num-threads", type=int, default=4)
+    s.add_argument("--emit", help="After optimization, emit code for this requirements string or file path")
+    s.set_defaults(func=cmd_optimize_author)
 
     return p
 
