@@ -7,6 +7,7 @@ from pathlib import Path
 from .evolver import DSPyProgramEvolver
 from .validation import prune_unused_imports
 from .codemod import scan_code_for_ast_usage, codemod_ast_to_libcst
+from .author import get_program_author
 
 
 def _iter_py_files(root: Path):
@@ -55,6 +56,31 @@ def cmd_codemod(args: argparse.Namespace) -> None:
             print(f"Rewrote {path}")
 
 
+def cmd_author(args: argparse.Namespace) -> None:
+    # Read requirements from file/stdin/arg
+    if args.in_file:
+        req = Path(args.in_file).read_text(encoding="utf-8")
+    elif args.requirements is not None:
+        req = args.requirements
+    else:
+        req = sys.stdin.read()
+
+    # Configure LM if provided
+    lm = None
+    if args.model:
+        try:
+            import dspy  # type: ignore
+        except Exception:
+            print("dspy must be installed to use --model", file=sys.stderr)
+            raise
+        lm = dspy.LM(args.model, temperature=args.temperature, max_tokens=args.max_tokens)
+        dspy.configure(lm=lm)
+
+    author = get_program_author(lm=lm)
+    pred = author(requirements=req)
+    print(pred.source, end="")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser("dspy-evolver")
     sub = p.add_subparsers(required=True)
@@ -76,6 +102,14 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("codemod", help="Rewrite built-in `ast` usage to LibCST")
     s.add_argument("root", help="Directory to transform in-place")
     s.set_defaults(func=cmd_codemod)
+
+    s = sub.add_parser("author", help="Use an LLM agent to write a DSPy program from requirements")
+    s.add_argument("requirements", nargs="?", help="Inline requirements text. If omitted, read stdin.")
+    s.add_argument("--in", dest="in_file", help="Read requirements from file path")
+    s.add_argument("--model", help="Model name for dspy.LM (e.g., openai/gpt-4o-mini)")
+    s.add_argument("--temperature", type=float, default=0.0)
+    s.add_argument("--max-tokens", dest="max_tokens", type=int, default=2048)
+    s.set_defaults(func=cmd_author)
 
     return p
 

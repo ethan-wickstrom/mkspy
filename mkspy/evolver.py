@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, Callable
+
 from .model import DSPyProgram, DSPyClass, DSPyMethod, DSPyParameter, DSPySignature, DSPyImport
 from .mutations import default_mutations, RandomRNG, RNG, Mutation
 from .validation import validate_program, prune_unused_imports, ValidationResult
@@ -9,6 +11,7 @@ from .types import ImportSpec, SignatureSpec, ModuleSpec, make_field
 logger = logging.getLogger(__name__)
 
 
+# Minimal defaults: declarative, strong baseline.
 DEFAULT_IMPORTS: list[ImportSpec] = [
     {"module": "dspy"},
     {"from_module": "typing", "imported_names": ["Optional", "List", "Dict", "Any"]},
@@ -32,11 +35,13 @@ DEFAULT_MODULES: list[ModuleSpec] = [
 
 class DSPyProgramEvolver:
     """
-    High-level orchestrator:
-    - Create a seed program
-    - Apply safe mutations
-    - Validate with LibCST
+    Evolver = (structure + compile) ⊕ (instruction optimization via GEPA).
+
+    - Structure: typed specs → DSPyProgram (signatures, class, bindings elsewhere)
+    - Compile: render to Python
+    - Optimize (optional): call DSPy.GEPA; propagate improved instructions back
     """
+
     def __init__(
         self,
         import_library: list[ImportSpec] | None = None,
@@ -52,10 +57,9 @@ class DSPyProgramEvolver:
             self.import_library, self.signature_library, self.module_library
         )
 
-    # --------- construction ---------
-
+    # ---------- Construction ----------
     def seed_program(self) -> DSPyProgram:
-        p = DSPyProgram(
+        return DSPyProgram(
             imports=[DSPyImport(**d) for d in self.import_library],
             signatures=[
                 DSPySignature(
@@ -79,10 +83,8 @@ class DSPyProgramEvolver:
                 ],
             ),
         )
-        return p
 
-    # --------- evolution ---------
-
+    # ---------- Evolution (structural) ----------
     def evolve(self, program: DSPyProgram, steps: int = 1) -> DSPyProgram:
         p = program
         for _ in range(max(0, steps)):
@@ -90,22 +92,69 @@ class DSPyProgramEvolver:
             if not applicable:
                 logger.info("No applicable mutations.")
                 break
-            mut = self.rng.choice(applicable)
-            mut.apply(p, self.rng)
+            self.rng.choice(applicable).apply(p, self.rng)
         return p
 
-    # --------- validation ---------
-
+    # ---------- Validation ----------
     def validate(self, program: DSPyProgram, prune_imports: bool = True) -> ValidationResult:
         res = validate_program(program)
         if not res.ok:
             return res
         if prune_imports:
-            # pass the program through a best-effort import pruner
             code = program.to_code()
             fixed = prune_unused_imports(code)
             if fixed != code:
-                # Note: We do not re-hydrate the structured Program from code here;
-                # callers should persist the fixed code.
                 logger.info("Imports pruned in rendered code.")
         return res
+
+    # ---------- Optimization (DSPy GEPA) ----------
+    def optimize_with_gepa(
+        self,
+        program: DSPyProgram,
+        trainset: list[Any],
+        *,
+        valset: list[Any] | None = None,
+        metric: Callable[..., Any] | None = None,
+        gepa_kwargs: dict[str, Any] | None = None,
+    ) -> DSPyProgram:
+        if not program.bound_modules:
+            raise ValueError("optimize_with_gepa requires at least one bound module.")
+        if metric is None:
+            raise ValueError("optimize_with_gepa requires a metric callable.")
+
+        try:
+            import dspy
+        except Exception as e:
+            raise RuntimeError("DSPy is required to run GEPA optimization.") from e
+
+        code = program.to_code()
+        ns: dict[str, Any] = {"dspy": dspy}
+        exec(code, ns, ns)
+        student = ns.get(program.program_var)
+        if student is None:
+            raise RuntimeError(f"Program variable `{program.program_var}` not found after exec().")
+
+        kw = dict(gepa_kwargs or {})
+        if not kw.get("reflection_lm"):
+            raise ValueError("gepa_kwargs must include a configured `reflection_lm` (dspy.LM).")
+        gepa = dspy.GEPA(metric=metric, **kw)
+
+        optimized = gepa.compile(student, trainset=trainset, valset=(valset or trainset))
+
+        updated: dict[str, str] = {}
+        for name, pred in optimized.named_predictors():
+            try:
+                instr = pred.signature.instructions
+            except Exception:
+                continue
+            if isinstance(instr, str):
+                updated[name] = instr
+
+        if not updated:
+            return program
+
+        sig_by_name = {s.name: s for s in program.signatures}
+        for bind in program.bound_modules:
+            if bind.module_name in updated and bind.signature_name in sig_by_name:
+                sig_by_name[bind.signature_name].docstring = updated[bind.module_name]
+        return program
