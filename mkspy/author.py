@@ -49,6 +49,108 @@ def _baseline_class() -> DSPyClass:
     )
 
 
+def _two_stage_signatures(requirements: str) -> list[DSPySignature]:
+    """Build two explicit, domain-agnostic contracts: Reasoning and Extract.
+
+    Reasoning: question -> reasoning (transparent, step-by-step for any domain)
+    Extract: question, reasoning -> answer (final answer only; format-correct)
+    """
+    reasoning_notes = (
+        "Think step-by-step and keep the chain of thought concise.\n"
+        "- Use ordered, verifiable steps; cite constraints from the prompt.\n"
+        "- Avoid speculation; ensure every step supports the conclusion.\n"
+        "- Check for contradictions, missing constraints, or leaps in logic.\n"
+        "- Keep domain-appropriate terminology (math, code, policy, etc.).\n"
+    )
+    extract_notes = (
+        "Extract ONLY the final answer as a string.\n"
+        "General rules:\n"
+        "- Do not add preambles like 'The answer is'.\n"
+        "- Do not use LaTeX, markdown, or extra punctuation.\n"
+        "- If the task asks for a single token/label, output that token only.\n"
+        "- If numeric, output the bare number (e.g., -128), no units unless required.\n"
+        "- If boolean, output true/false or yes/no exactly as requested.\n"
+        "- If a specific JSON or code snippet is requested, output exactly that snippet.\n"
+        "- If asked to combine multiple values (e.g., sum/product/max), return only the requested aggregate.\n"
+    )
+
+    if requirements.strip():
+        reasoning_doc = requirements.strip() + "\n\n" + reasoning_notes
+        extract_doc = requirements.strip() + "\n\n" + extract_notes
+    else:
+        reasoning_doc = "Two-stage solver: reason step-by-step.\n\n" + reasoning_notes
+        extract_doc = "Two-stage solver: extract final answer only.\n\n" + extract_notes
+
+    sig_reason = DSPySignature(
+        name="Reasoning",
+        docstring=reasoning_doc,
+        inputs=[DSPyField("question", "str", "Problem statement")],
+        outputs=[DSPyField("reasoning", "str", "Transparent derivation", is_input=False)],
+    )
+    sig_extract = DSPySignature(
+        name="Extract",
+        docstring=extract_doc,
+        inputs=[
+            DSPyField("question", "str", "Problem statement"),
+            DSPyField("reasoning", "str", "Derivation text"),
+        ],
+        outputs=[DSPyField("answer", "str", "Final answer only", is_input=False)],
+    )
+    return [sig_reason, sig_extract]
+
+
+def _two_stage_class() -> DSPyClass:
+    fwd = DSPyMethod(
+        name="forward",
+        parameters=[DSPyParameter("self"), DSPyParameter("question", "str")],
+        return_type="dspy.Prediction",
+        body=[
+            DSPyAssignment("r", "self.reasoner(question=question).reasoning"),
+            DSPyAssignment("a", "self.extractor(question=question, reasoning=r).answer"),
+            DSPyReturn("dspy.Prediction(reasoning=r, answer=a)"),
+        ],
+    )
+    return DSPyClass(
+        name="Program",
+        docstring="Two-stage solver: reason step-by-step, then extract final answer only.",
+        methods=[fwd],
+    )
+
+
+def generate_two_stage_solver(requirements: str = "") -> str:
+    """Emit a two-stage solver program with explicit contracts and wiring.
+
+    - Reasoning(question) -> reasoning via dspy.ChainOfThought
+    - Extract(question, reasoning) -> answer via dspy.Predict
+    - forward returns dspy.Prediction(reasoning=..., answer=...)
+    """
+    p = DSPyProgram(
+        imports=[
+            DSPyImport(module="dspy"),
+            DSPyImport(from_module="typing", imported_names=["Optional", "List", "Dict", "Any"]),
+        ],
+        signatures=_two_stage_signatures(requirements),
+        main_class=_two_stage_class(),
+        bound_modules=[
+            DSPySignatureBinding(
+                module_name="reasoner",
+                signature_name="Reasoning",
+                module_type="ChainOfThought",
+                parameters={},
+            ),
+            DSPySignatureBinding(
+                module_name="extractor",
+                signature_name="Extract",
+                module_type="Predict",
+                parameters={},
+            ),
+        ],
+        program_var="program",
+    )
+    code = prune_unused_imports(p.to_code())
+    return codemod_ast_to_libcst(code)
+
+
 def generate_structured_code(requirements: str) -> str:
     """Synthesize a minimal, runnable DSPy program from requirements.
 
@@ -122,7 +224,15 @@ def get_program_author(lm: Any | None = None) -> Any:
     class ProgramAuthor(dspy.Module):
         def __init__(self):
             super().__init__()
-            tools = [_tool_generate, _tool_postprocess]
+            def _tool_generate_two_stage(requirements: str = "") -> str:
+                """generate_two_stage_solver(requirements: str = "") -> str
+
+                Build a two-stage DSPy solver program: (1) Reasoning, (2) Extract-only answer.
+                Returns Python source as a string.
+                """
+                return generate_two_stage_solver(requirements)
+
+            tools = [_tool_generate, _tool_generate_two_stage, _tool_postprocess]
             self.agent = dspy.ReAct(AuthorSig, tools=tools)
             if lm is not None:
                 dspy.configure(lm=lm)
@@ -221,10 +331,16 @@ def _examples_from_requirements(reqs: list[str]):
 
 def default_author_trainset() -> list[Any]:
     reqs = [
+        # General code skeletons
         "Write a DSPy program that echoes input text to result.",
-        "Create a DSPy program with a signature question->answer and a module that returns a prediction.",
         "Produce a minimal DSPy program exposing `program = <Main>()` with a forward method.",
         "Build a DSPy program that binds dspy.Predict to a signature and calls it in forward.",
+        # Two-stage reasoning patterns (domain-agnostic)
+        "Create a two-stage solver: first reason step-by-step, then extract only the final answer.",
+        # Non-math domains
+        "Design a classifier signature text->label and return only the label in extract stage.",
+        "Design an extractor signature record->fields and ensure extract returns a comma-separated list only.",
+        "Design a QA signature question->answer where extract returns a short, direct answer only.",
     ]
     return _examples_from_requirements(reqs)
 
