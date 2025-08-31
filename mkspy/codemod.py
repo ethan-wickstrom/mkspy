@@ -76,7 +76,9 @@ class _Scan(cst.CSTVisitor):
         for alias in node.names:
             if isinstance(alias.name, cst.Name) and alias.name.value == "ast":
                 self.record.import_ast = True
-                self.record.lines.append(self.get_metadata(PositionProvider, node).start.line)
+                pos = self.get_metadata(PositionProvider, node, default=None)
+                if pos is not None:
+                    self.record.lines.append(pos.start.line)
 
     def visit_ImportFrom(self, node: cst.ImportFrom) -> None:
         if isinstance(node.module, cst.Name) and node.module.value == "ast":
@@ -90,12 +92,16 @@ class _Scan(cst.CSTVisitor):
             for alias in names_list:
                 if isinstance(alias.name, cst.Name):
                     self.record.from_ast_imports.append(alias.name.value)
-            self.record.lines.append(self.get_metadata(PositionProvider, node).start.line)
+            pos = self.get_metadata(PositionProvider, node, default=None)
+            if pos is not None:
+                self.record.lines.append(pos.start.line)
 
     def visit_Attribute(self, node: cst.Attribute) -> None:
         if isinstance(node.value, cst.Name) and node.value.value == "ast":
             self.record.attr_uses.append(node.attr.value)
-            self.record.lines.append(self.get_metadata(PositionProvider, node).start.line)
+            pos = self.get_metadata(PositionProvider, node, default=None)
+            if pos is not None:
+                self.record.lines.append(pos.start.line)
 
 
 def scan_code_for_ast_usage(code: str, path: str = "<memory>") -> AstUsageRecord:

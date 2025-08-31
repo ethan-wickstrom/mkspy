@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, Sequence, TypeVar, runtime_checkable
 from abc import ABC, abstractmethod
 import random
 
@@ -9,14 +9,17 @@ from .model import (
     DSPyProgram, DSPyImport, DSPySignature, DSPyField, DSPyMethod, DSPyAssignment,
     DSPyReturn, DSPyIf, DSPyFor, DSPyParameter, DSPySignatureBinding, SAFE_MODULE_TYPES,
 )
+from .types import ImportSpec, SignatureSpec, ModuleSpec, FieldSpec, mk_field
 
 logger = logging.getLogger(__name__)
 
 
+_T = TypeVar("_T")
+
 @runtime_checkable
 class RNG(Protocol):
     def random(self) -> float: ...
-    def choice(self, seq): ...
+    def choice(self, seq: Sequence[_T]) -> _T: ...
     def randint(self, a: int, b: int) -> int: ...
 
 
@@ -50,7 +53,7 @@ class Mutation(ABC):
 
 
 class AddImport(Mutation):
-    def __init__(self, candidates: list[dict[str, Any]]):
+    def __init__(self, candidates: list[ImportSpec]):
         super().__init__("AddImport")
         self.candidates = candidates
 
@@ -71,7 +74,7 @@ class AddImport(Mutation):
 
 
 class AddSignature(Mutation):
-    def __init__(self, candidates: list[dict[str, Any]]):
+    def __init__(self, candidates: list[SignatureSpec]):
         super().__init__("AddSignature")
         self.candidates = candidates
 
@@ -85,14 +88,14 @@ class AddSignature(Mutation):
                 DSPySignature(
                     name=sd["name"],
                     docstring=sd.get("docstring", ""),
-                    inputs=[_mk_field(fd) for fd in sd.get("inputs", [])],
-                    outputs=[_mk_field(fd) for fd in sd.get("outputs", [])],
+                    inputs=[mk_field(fd) for fd in sd.get("inputs", [])],
+                    outputs=[mk_field(fd) for fd in sd.get("outputs", [])],
                 )
             )
 
 
 class BindModule(Mutation):
-    def __init__(self, candidates: list[dict[str, Any]]):
+    def __init__(self, candidates: list[ModuleSpec]):
         super().__init__("BindModule")
         self.candidates = candidates
 
@@ -163,9 +166,9 @@ class AddControlFlow(Mutation):
             fwd.body.append(stmt)
 
 
-def default_mutations(import_lib: list[dict[str, Any]],
-                      signature_lib: list[dict[str, Any]],
-                      module_lib: list[dict[str, Any]]) -> list[Mutation]:
+def default_mutations(import_lib: list[ImportSpec],
+                      signature_lib: list[SignatureSpec],
+                      module_lib: list[ModuleSpec]) -> list[Mutation]:
     return [
         AddImport(import_lib),
         AddSignature(signature_lib),
@@ -180,16 +183,7 @@ class RandomRNG:
     def __init__(self, seed: int | None = None) -> None:
         self._r = random.Random(seed)
     def random(self) -> float: return self._r.random()
-    def choice(self, seq): return self._r.choice(seq)
+    def choice(self, seq: Sequence[_T]) -> _T: return self._r.choice(seq)  # type: ignore[no-any-return]
     def randint(self, a: int, b: int) -> int: return self._r.randint(a, b)
 
-
-def _mk_field(fd: dict[str, object]) -> DSPyField:
-    if "name" not in fd or not isinstance(fd["name"], str):
-        raise ValueError("Field missing required 'name' string")
-    return DSPyField(
-        name=fd["name"],
-        field_type=fd.get("field_type", "str"),  # type: ignore[arg-type]
-        description=fd.get("description", ""),   # type: ignore[arg-type]
-        is_input=bool(fd.get("is_input", True)),
-    )
+    

@@ -6,35 +6,28 @@ from typing import Any
 from .model import DSPyProgram, DSPyClass, DSPyMethod, DSPyParameter, DSPySignature, DSPyField, DSPyImport
 from .mutations import default_mutations, RandomRNG, RNG, Mutation
 from .validation import validate_program, prune_unused_imports, ValidationResult
+from .types import FieldSpec, ImportSpec, SignatureSpec, ModuleSpec, mk_field
 
 logger = logging.getLogger(__name__)
 
 
-def _mk_field(fd: dict[str, object]) -> DSPyField:
-    if "name" not in fd or not isinstance(fd["name"], str):
-        raise ValueError("Field missing required 'name' string")
-    return DSPyField(
-        name=fd["name"],
-        field_type=fd.get("field_type", "str"),
-        description=fd.get("description", ""),
-        is_input=bool(fd.get("is_input", True)),
-    )
-
-DEFAULT_IMPORTS = [
+DEFAULT_IMPORTS: list[ImportSpec] = [
     {"module": "dspy"},
     {"from_module": "typing", "imported_names": ["Optional", "List", "Dict", "Any"]},
 ]
 
-DEFAULT_SIGNATURES = [
+DEFAULT_SIGNATURES: list[SignatureSpec] = [
     {
         "name": "BasicSignature",
         "docstring": "Simple QA signature.",
         "inputs": [{"name": "question", "field_type": "str", "description": "Question"}],
-        "outputs": [{"name": "answer", "field_type": "str", "description": "Answer", "is_input": False}],
+        "outputs": [
+            {"name": "answer", "field_type": "str", "description": "Answer", "is_input": False}
+        ],
     }
 ]
 
-DEFAULT_MODULES = [
+DEFAULT_MODULES: list[ModuleSpec] = [
     {"name": "predictor", "module_type": "Predict", "signature_ref": "BasicSignature", "parameters": {}},
 ]
 
@@ -48,9 +41,9 @@ class DSPyProgramEvolver:
     """
     def __init__(
         self,
-        import_library: list[dict[str, Any]] | None = None,
-        signature_library: list[dict[str, Any]] | None = None,
-        module_library: list[dict[str, Any]] | None = None,
+        import_library: list[ImportSpec] | None = None,
+        signature_library: list[SignatureSpec] | None = None,
+        module_library: list[ModuleSpec] | None = None,
         seed: int | None = None,
     ) -> None:
         self.import_library = import_library or DEFAULT_IMPORTS
@@ -70,8 +63,8 @@ class DSPyProgramEvolver:
                 DSPySignature(
                     name=s["name"],
                     docstring=s.get("docstring", ""),
-                    inputs=[_mk_field(fd) for fd in s.get("inputs", [])],
-                    outputs=[_mk_field(fd) for fd in s.get("outputs", [])],
+                    inputs=[mk_field(fd) for fd in s.get("inputs", [])],
+                    outputs=[mk_field(fd) for fd in s.get("outputs", [])],
                 )
                 for s in self.signature_library
             ],

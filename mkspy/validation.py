@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider, ScopeProvider
+import libcst.metadata.scope_provider as sp
 
 from .model import DSPyProgram
 
@@ -99,14 +100,15 @@ def prune_unused_imports(code: str) -> str:
     unused: dict[cst.CSTNode, set[str]] = defaultdict(set)
 
     # Convert maps to a per-node view
-    all_scopes = set(scopes.values())
+    all_scopes = {s for s in scopes.values() if s is not None}
     for scope in all_scopes:
         for assignment in scope.assignments:
-            node = assignment.node
-            if isinstance(node, (cst.Import, cst.ImportFrom)):
-                # If no references, mark as unused
-                if len(assignment.references) == 0:
-                    unused[node].add(assignment.name)
+            if isinstance(assignment, sp.Assignment):
+                node = assignment.node
+                if isinstance(node, (cst.Import, cst.ImportFrom)):
+                    # If no references, mark as unused
+                    if len(assignment.references) == 0:
+                        unused[node].add(assignment.name)
 
     class RemoveUnusedImportTransformer(cst.CSTTransformer):
         def leave_Import(
