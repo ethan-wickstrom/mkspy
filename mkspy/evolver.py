@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
-
-from .model import DSPyProgram, DSPyClass, DSPyMethod, DSPyParameter, DSPySignature, DSPyField, DSPyImport
+from .model import DSPyProgram, DSPyClass, DSPyMethod, DSPyParameter, DSPySignature, DSPyImport
 from .mutations import default_mutations, RandomRNG, RNG, Mutation
 from .validation import validate_program, prune_unused_imports, ValidationResult
-from .types import FieldSpec, ImportSpec, SignatureSpec, ModuleSpec, mk_field
+from .types import ImportSpec, SignatureSpec, ModuleSpec, mk_field
 
 logger = logging.getLogger(__name__)
 

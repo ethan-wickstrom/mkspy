@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol, Sequence, TypeVar, runtime_checkable
+from typing import Protocol, Sequence, TypeVar, runtime_checkable
 from abc import ABC, abstractmethod
 import random
 
@@ -9,7 +9,7 @@ from .model import (
     DSPyProgram, DSPyImport, DSPySignature, DSPyField, DSPyMethod, DSPyAssignment,
     DSPyReturn, DSPyIf, DSPyFor, DSPyParameter, DSPySignatureBinding, SAFE_MODULE_TYPES,
 )
-from .types import ImportSpec, SignatureSpec, ModuleSpec, FieldSpec, mk_field
+from .types import ImportSpec, SignatureSpec, ModuleSpec, mk_field
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,9 @@ class BindModule(Mutation):
     def apply(self, p: DSPyProgram, rng: RNG) -> None:
         cd = rng.choice(self.candidates)
         mod_name = cd["name"]
-        mod_type = cd["module_type"] if cd["module_type"] in SAFE_MODULE_TYPES else "Predict"
+        mod_type = cd.get("module_type") or "Predict"
+        if mod_type not in SAFE_MODULE_TYPES:
+            mod_type = "Predict"
         # existing signature or any
         if p.signatures:
             sig_name = cd.get("signature_ref") or rng.choice(p.signatures).name

@@ -19,18 +19,18 @@ class ImportSpec(TypedDict, total=False):
     imported_names: list[str]
 
 
-class SignatureSpec(TypedDict, total=False):
+class SignatureSpec(TypedDict):
     name: str
-    docstring: str
-    inputs: list[FieldSpec]
-    outputs: list[FieldSpec]
+    docstring: NotRequired[str]
+    inputs: NotRequired[list[FieldSpec]]
+    outputs: NotRequired[list[FieldSpec]]
 
 
-class ModuleSpec(TypedDict, total=False):
+class ModuleSpec(TypedDict):
     name: str
-    module_type: str
-    signature_ref: str
-    parameters: dict[str, Any]
+    module_type: NotRequired[str]
+    signature_ref: NotRequired[str]
+    parameters: NotRequired[dict[str, Any]]
 
 
 def mk_field(fd: FieldSpec) -> DSPyField:
@@ -40,4 +40,3 @@ def mk_field(fd: FieldSpec) -> DSPyField:
         description=fd.get("description", ""),
         is_input=bool(fd.get("is_input", True)),
     )
-
