@@ -13,4 +13,184 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
+    "ruff>=0.12.11",
 ]
+
+[tool.ty]
+
+[tool.ty.rules]
+# Core type safety - catch errors early to minimize maintenance debt
+invalid-assignment = "error"
+invalid-argument-type = "error"
+invalid-return-type = "error"
+invalid-declaration = "error"
+unresolved-reference = "error"
+unresolved-import = "error"
+unresolved-attribute = "error"
+
+# Function signature integrity - critical for structured LLM interactions
+missing-argument = "error"
+unknown-argument = "error"
+parameter-already-assigned = "error"
+too-many-positional-arguments = "error"
+
+# Class hierarchy safety - essential for modular AI components
+invalid-base = "error"
+invalid-metaclass = "error"
+duplicate-base = "error"
+inconsistent-mro = "error"
+instance-layout-conflict = "error"
+subclass-of-final-class = "error"
+
+# Generic and type variable safety - important for flexible yet type-safe code
+invalid-generic-class = "error"
+invalid-legacy-type-variable = "error"
+invalid-type-variable-constraints = "error"
+
+# Context manager safety - important for resource management in AI pipelines
+invalid-context-manager = "error"
+
+# Operator safety - ensures correct behavior in data processing
+unsupported-operator = "error"
+not-iterable = "error"
+non-subscriptable = "error"
+index-out-of-bounds = "error"
+invalid-key = "error"
+zero-stepsize-in-slice = "error"
+
+# Exception safety - important for robust error handling
+invalid-raise = "error"
+invalid-exception-caught = "error"
+
+# Overload safety - important for function variants in AI systems
+invalid-overload = "error"
+no-matching-overload = "error"
+
+# Type guard safety - important for type narrowing in dynamic AI code
+invalid-type-guard-definition = "error"
+invalid-type-guard-call = "error"
+
+# Protocol safety - essential for interface contracts in modular design
+invalid-protocol = "error"
+
+# Type alias safety - important for abstraction in complex systems
+invalid-type-alias-type = "error"
+
+# Type checking constants - important for TYPE_CHECKING blocks
+invalid-type-checking-constant = "error"
+
+# Super() call safety - important for class inheritance
+invalid-super-argument = "error"
+unavailable-implicit-super-arguments = "error"
+
+# Static assertion safety - important for compile-time checks
+static-assert-error = "error"
+
+# Type assertion safety - important for debugging in AI development
+type-assertion-failure = "error"
+
+# Boolean conversion safety - important for conditionals
+unsupported-bool-conversion = "error"
+
+# Declaration consistency - important for clear specifications
+conflicting-declarations = "error"
+conflicting-argument-forms = "error"
+conflicting-metaclass = "error"
+
+# Cyclic definition safety - important for avoiding infinite loops
+cyclic-class-definition = "error"
+
+# Callable safety - important for function safety
+call-non-callable = "error"
+
+# String annotation safety - important for type annotations
+byte-string-type-annotation = "error"
+raw-string-type-annotation = "error"
+fstring-type-annotation = "error"
+implicit-concatenated-string-type-annotation = "error"
+invalid-syntax-in-forward-annotation = "error"
+
+# Parameter default safety - important for function safety
+invalid-parameter-default = "error"
+
+# Attribute access safety - important for object safety
+invalid-attribute-access = "error"
+
+# Type form safety - important for type expressions
+invalid-type-form = "error"
+
+# Module discovery - important for imports
+unresolved-global = "error"
+
+# Deprecated features - warn to encourage modern code
+deprecated = "warn"
+
+# Potentially unbound elements - warn as they might be intentional
+possibly-unbound-attribute = "warn"
+possibly-unbound-implicit-call = "warn"
+possibly-unbound-import = "warn"
+possibly-unresolved-reference = "warn"
+
+# Code quality issues - warn but don't fail
+redundant-cast = "warn"
+
+# Ignore comment usage - warn to ensure correct usage
+invalid-ignore-comment = "warn"
+unused-ignore-comment = "warn"
+unknown-rule = "warn"
+
+# Unsupported bases - warn as they might be intentional in some cases
+unsupported-base = "warn"
+
+# Debugging tools - warn as they're development aids
+undefined-reveal = "warn"
+
+# Potentially overly strict for dynamic AI code - ignore
+division-by-zero = "ignore"
+
+[tool.ty.environment]
+# Root paths for the project - include src and tests for comprehensive checking
+root = ["./mkspy", "./tests"]
+
+[tool.ty.src]
+# Include patterns for source files - focus on core code
+include = [
+    "src",
+    "tests",
+]
+
+# Exclude patterns for files that shouldn't be type-checked
+exclude = [
+    "build",
+    "dist",
+    "venv",
+    ".venv",
+    "__pycache__",
+    "*.egg-info",
+]
+
+# Respect ignore files for better integration with other tools
+respect-ignore-files = true
+
+[tool.ty.terminal]
+# Use full output format for detailed error messages during development
+output-format = "full"
+
+[[tool.ty.overrides]]
+include = ["tests/**", "**/test_*.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "ignore"
+possibly-unbound-attribute = "ignore"
+possibly-unbound-import = "ignore"
+redundant-cast = "ignore"
+
+[[tool.ty.overrides]]
+include = ["examples/**", "docs/**"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "ignore"
+possibly-unbound-attribute = "ignore"
+possibly-unbound-import = "ignore"
+redundant-cast = "ignore"
+invalid-parameter-default = "warn"
