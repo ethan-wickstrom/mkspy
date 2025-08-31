@@ -60,7 +60,7 @@ class DSPyProgramEvolver:
             signatures=[
                 DSPySignature(
                     name=s["name"],
-                    docstring=s.get("docstring", ""),
+                    docstring=s.get("docstring", s.get("description", "")),
                     inputs=[make_field(fd) for fd in s.get("inputs", [])],
                     outputs=[make_field(fd) for fd in s.get("outputs", [])],
                 )

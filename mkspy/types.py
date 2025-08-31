@@ -22,6 +22,7 @@ class ImportSpec(TypedDict, total=False):
 class SignatureSpec(TypedDict):
     name: str
     docstring: NotRequired[str]
+    description: NotRequired[str]
     inputs: NotRequired[list[FieldSpec]]
     outputs: NotRequired[list[FieldSpec]]
 

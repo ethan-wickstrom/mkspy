@@ -87,7 +87,7 @@ class AddSignature(Mutation):
             p.signatures.append(
                 DSPySignature(
                     name=sd["name"],
-                    docstring=sd.get("docstring", ""),
+                    docstring=sd.get("docstring", sd.get("description", "")),
                     inputs=[make_field(fd) for fd in sd.get("inputs", [])],
                     outputs=[make_field(fd) for fd in sd.get("outputs", [])],
                 )
