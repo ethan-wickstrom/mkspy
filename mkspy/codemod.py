@@ -105,6 +105,7 @@ class _Scan(cst.CSTVisitor):
 
 
 def scan_code_for_ast_usage(code: str, path: str = "<memory>") -> AstUsageRecord:
+    """Return a minimal, structured summary of builtin `ast` usage."""
     try:
         mod = cst.parse_module(code)
     except cst.ParserSyntaxError:
@@ -224,6 +225,7 @@ class AstToLibCSTCodemod(m.MatcherDecoratableTransformer):
 
 
 def codemod_ast_to_libcst(code: str) -> str:
+    """Rewrite builtin `ast` usage to LibCST equivalents."""
     try:
         mod = cst.parse_module(code)
     except cst.ParserSyntaxError:
@@ -233,3 +235,12 @@ def codemod_ast_to_libcst(code: str) -> str:
     w.visit(pre)
     transformed = w.module.visit(AstToLibCSTCodemod(pre.ast_aliases))
     return transformed.code
+
+
+def codemod_needed(code: str) -> bool:
+    """Checks if codemod will change the code."""
+    try:
+        return codemod_ast_to_libcst(code) != code
+    except Exception:
+        # Be safe: on parse errors or unexpected issues, report no change
+        return False
