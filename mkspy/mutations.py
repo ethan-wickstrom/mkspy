@@ -9,7 +9,7 @@ from .model import (
     DSPyProgram, DSPyImport, DSPySignature, DSPyField, DSPyMethod, DSPyAssignment,
     DSPyReturn, DSPyIf, DSPyFor, DSPyParameter, DSPySignatureBinding, SAFE_MODULE_TYPES,
 )
-from .types import ImportSpec, SignatureSpec, ModuleSpec, mk_field
+from .types import ImportSpec, SignatureSpec, ModuleSpec, make_field
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +88,8 @@ class AddSignature(Mutation):
                 DSPySignature(
                     name=sd["name"],
                     docstring=sd.get("docstring", ""),
-                    inputs=[mk_field(fd) for fd in sd.get("inputs", [])],
-                    outputs=[mk_field(fd) for fd in sd.get("outputs", [])],
+                    inputs=[make_field(fd) for fd in sd.get("inputs", [])],
+                    outputs=[make_field(fd) for fd in sd.get("outputs", [])],
                 )
             )
 

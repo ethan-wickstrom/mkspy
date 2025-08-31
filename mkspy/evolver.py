@@ -4,7 +4,7 @@ import logging
 from .model import DSPyProgram, DSPyClass, DSPyMethod, DSPyParameter, DSPySignature, DSPyImport
 from .mutations import default_mutations, RandomRNG, RNG, Mutation
 from .validation import validate_program, prune_unused_imports, ValidationResult
-from .types import ImportSpec, SignatureSpec, ModuleSpec, mk_field
+from .types import ImportSpec, SignatureSpec, ModuleSpec, make_field
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,8 @@ class DSPyProgramEvolver:
                 DSPySignature(
                     name=s["name"],
                     docstring=s.get("docstring", ""),
-                    inputs=[mk_field(fd) for fd in s.get("inputs", [])],
-                    outputs=[mk_field(fd) for fd in s.get("outputs", [])],
+                    inputs=[make_field(fd) for fd in s.get("inputs", [])],
+                    outputs=[make_field(fd) for fd in s.get("outputs", [])],
                 )
                 for s in self.signature_library
             ],

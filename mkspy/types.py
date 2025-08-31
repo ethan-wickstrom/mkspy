@@ -33,7 +33,7 @@ class ModuleSpec(TypedDict):
     parameters: NotRequired[dict[str, Any]]
 
 
-def mk_field(fd: FieldSpec) -> DSPyField:
+def make_field(fd: FieldSpec) -> DSPyField:
     return DSPyField(
         name=fd["name"],
         field_type=fd.get("field_type", "str"),
