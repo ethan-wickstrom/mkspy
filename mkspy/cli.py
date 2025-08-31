@@ -1,71 +1,44 @@
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
+from typing import Iterator
 
-from .evolver import DSPyProgramEvolver
-from .validation import prune_unused_imports
 from .codemod import scan_code_for_ast_usage, codemod_ast_to_libcst
 from .author import get_program_author, optimize_program_author, default_author_trainset
 
 
-def _iter_py_files(root: Path):
+def _iter_py_files(root: Path) -> Iterator[Path]:
     for p in root.rglob("*.py"):
         if any(part in {".git", ".venv", "venv", "__pycache__"} for part in p.parts):
             continue
         yield p
 
 
-def cmd_seed(args: argparse.Namespace) -> None:
-    evo = DSPyProgramEvolver(seed=args.seed)
-    p = evo.seed_program()
-    code = p.to_code()
-    print(code, end="")
-
-
-def cmd_evolve(args: argparse.Namespace) -> None:
-    evo = DSPyProgramEvolver(seed=args.seed)
-    p = evo.seed_program()
-    p = evo.evolve(p, steps=args.steps)
-    res = evo.validate(p)
-    code = p.to_code()
-    if args.prune:
-        code = prune_unused_imports(code)
-    print(code, end="")
-    if not res.ok:
-        print("\n# Validation errors:", file=sys.stderr)
-        for e in res.errors:
-            print(f"# - {e}", file=sys.stderr)
-
-
 def cmd_scan(args: argparse.Namespace) -> None:
     for path in _iter_py_files(Path(args.root)):
         rec = scan_code_for_ast_usage(path.read_text(encoding="utf-8"), str(path))
-        d = rec.to_dict()
-        if d["import_ast"] or d["from_ast_imports"] or d["attr_uses"]:
-            print(d)
+        data: dict[str, bool | list[str]] = rec.to_dict()
+        if data["import_ast"] or data["from_ast_imports"] or data["attr_uses"]:
+            print(data)
 
 
 def cmd_codemod(args: argparse.Namespace) -> None:
     for path in _iter_py_files(Path(args.root)):
-        src = path.read_text(encoding="utf-8")
-        dst = codemod_ast_to_libcst(src)
+        src: str = path.read_text(encoding="utf-8")
+        dst: str = codemod_ast_to_libcst(src)
         if dst != src:
             path.write_text(dst, encoding="utf-8")
             print(f"Rewrote {path}")
 
 
 def cmd_author(args: argparse.Namespace) -> None:
-    # Read requirements from file/stdin/arg
     if args.in_file:
-        req = Path(args.in_file).read_text(encoding="utf-8")
+        req: str = Path(args.in_file).read_text(encoding="utf-8")
     elif args.requirements is not None:
         req = args.requirements
     else:
         req = sys.stdin.read()
 
-    # Configure LM if provided
     lm = None
     if args.model:
         try:
@@ -92,19 +65,16 @@ def cmd_optimize_author(args: argparse.Namespace) -> None:
         print("dspy must be installed to optimize the author", file=sys.stderr)
         raise
 
-    # Gen LM
     gen_lm = None
     if args.model:
         gen_lm = dspy.LM(args.model, temperature=args.temperature, max_tokens=args.max_tokens)
         dspy.configure(lm=gen_lm)
 
-    # Reflection LM
     if not args.reflection_model:
         print("--reflection-model is required", file=sys.stderr)
         raise SystemExit(2)
     reflection_lm = dspy.LM(args.reflection_model, temperature=1.0, max_tokens=32000)
 
-    # Datasets
     if args.train:
         tr_reqs = _load_requirements_lines(args.train)
         trainset = [dspy.Example(requirements=r).with_inputs("requirements") for r in tr_reqs]
@@ -115,8 +85,7 @@ def cmd_optimize_author(args: argparse.Namespace) -> None:
         va_reqs = _load_requirements_lines(args.val)
         valset = [dspy.Example(requirements=r).with_inputs("requirements") for r in va_reqs]
 
-    # Budget
-    gepa_kwargs = dict(max_metric_calls=args.max_metric_calls, num_threads=args.num_threads)
+    gepa_kwargs = {"max_metric_calls": args.max_metric_calls, "num_threads": args.num_threads}
 
     optimized = optimize_program_author(
         trainset=trainset,
@@ -126,13 +95,11 @@ def cmd_optimize_author(args: argparse.Namespace) -> None:
         gepa_kwargs=gepa_kwargs,
     )
 
-    # Emit once if requested
     if args.emit:
         req_text = Path(args.emit).read_text(encoding="utf-8") if Path(args.emit).exists() else args.emit
         out = optimized(requirements=req_text)
         print(out.source, end="")
     else:
-        # Print the current optimized instruction for visibility
         try:
             name, pred = next(iter(optimized.named_predictors()))
             print(pred.signature.instructions)
@@ -143,16 +110,6 @@ def cmd_optimize_author(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser("dspy-evolver")
     sub = p.add_subparsers(required=True)
-
-    s = sub.add_parser("seed", help="Emit a seed DSPy program")
-    s.add_argument("--seed", type=int, default=None)
-    s.set_defaults(func=cmd_seed)
-
-    s = sub.add_parser("evolve", help="Evolve a seed program and emit code")
-    s.add_argument("--steps", type=int, default=3)
-    s.add_argument("--seed", type=int, default=None)
-    s.add_argument("--prune", action="store_true")
-    s.set_defaults(func=cmd_evolve)
 
     s = sub.add_parser("scan", help="Scan a tree for built-in `ast` usage")
     s.add_argument("root", help="Directory to scan")
