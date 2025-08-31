@@ -26,11 +26,8 @@ class GEPAEvolver:
     def evolve(self, num_iterations: int = 50, rollout_size: int = 4) -> DSPyProgramGenerator:
         optimizer: GEPA = GEPA(
             metric=self.metric,
-            max_meta_evals=num_iterations,
-            rollout_size=rollout_size,
             track_stats=True,
             track_best_outputs=True,
-            verbose=True,
             log_dir=str(self.output_dir / "gepa_logs"),
         )
 

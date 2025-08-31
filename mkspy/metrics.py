@@ -4,6 +4,7 @@ from typing import Any, Optional, Dict, List, Callable
 import ast
 import dspy
 from dspy.primitives.prediction import Prediction
+from dspy.teleprompt.gepa.gepa import DSPyTrace
 
 
 class ProgramGenerationMetric:
@@ -13,7 +14,7 @@ class ProgramGenerationMetric:
         self.test_cases: List[Dict[str, Any]] = test_cases
         self.weights: Dict[str, float] = {"syntax": syntax_weight, "execution": execution_weight, "quality": quality_weight}
 
-    def __call__(self, gold: dspy.Example, pred: Prediction, trace: Optional[dspy.DSPyTrace] = None, pred_name: Optional[str] = None, pred_trace: Optional[dspy.DSPyTrace] = None) -> Dict[str, Any]:
+    def __call__(self, gold: dspy.Example, pred: Prediction, trace: Optional[DSPyTrace] = None, pred_name: Optional[str] = None, pred_trace: Optional[DSPyTrace] = None) -> Dict[str, Any]:
         feedback_parts: List[str] = []
         scores: Dict[str, float] = {"syntax": 0.0, "execution": 0.0, "quality": 0.0}
 
