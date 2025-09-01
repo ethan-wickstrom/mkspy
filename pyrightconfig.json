@@ -1,0 +1,22 @@
+{
+    "include": [
+      "mkspy"
+    ],
+    "exclude": [
+      "**/node_modules",
+      "**/__pycache__"
+    ],
+    "defineConstant": {
+      "DEBUG": true
+    },
+    "reportMissingImports": "error",
+    "reportMissingTypeStubs": false,
+    "strictListInference": true,
+    "strictDictionaryInference": true,
+    "strictSetInference": true,
+    "analyzeUnannotatedFunctions": true,
+    "strictParameterNoneValue": true,
+    "deprecateTypingAliases": true,
+    "strictGenericNarrowing": true,
+    "pythonVersion": "3.13"
+}

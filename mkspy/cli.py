@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 from typing import Iterator
 
-from codemod import scan_code_for_ast_usage, codemod_ast_to_libcst
-from author import get_program_author, optimize_program_author, default_author_trainset
+from .codemod import scan_code_for_ast_usage, codemod_ast_to_libcst
+from .author import get_program_author, optimize_program_author, default_author_trainset
 
 
 def _iter_py_files(root: Path) -> Iterator[Path]:

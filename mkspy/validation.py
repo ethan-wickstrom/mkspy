@@ -7,7 +7,7 @@ import libcst as cst
 from libcst.metadata import MetadataWrapper, PositionProvider, ScopeProvider
 import libcst.metadata.scope_provider as sp
 
-from model import DSPyProgram
+from .model import DSPyProgram
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ def validate_program(program: DSPyProgram) -> ValidationResult:
         METADATA_DEPENDENCIES = (PositionProvider,)
 
         def __init__(self, cls: str, var: str) -> None:
+            super().__init__()
             self.cls = cls
             self.var = var
             self.has_dspy_import = False

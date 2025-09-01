@@ -52,6 +52,7 @@ class _PreScan(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
     def __init__(self) -> None:
+        super().__init__()
         self.ast_aliases: set[str] = {"ast"}  # will include alias names, e.g., {"ast", "pyast"}
 
     def visit_Import(self, node: cst.Import) -> None:
@@ -70,6 +71,7 @@ class _Scan(cst.CSTVisitor):
     METADATA_DEPENDENCIES = (PositionProvider,)
 
     def __init__(self, path: str) -> None:
+        super().__init__()
         self.record = AstUsageRecord(path)
 
     def visit_Import(self, node: cst.Import) -> None:

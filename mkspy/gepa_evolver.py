@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple, cast
 import json
 import dspy
 from dspy import GEPA
+from dspy.teleprompt.gepa.gepa import GEPAFeedbackMetric
 
 from .meta_module import DSPyProgramGenerator
 from .metrics import ProgramGenerationMetric
@@ -24,9 +25,10 @@ class GEPAEvolver:
         self.valset: List[dspy.Example] = self._create_dataset(task_library[80:])
         self.metric: ProgramGenerationMetric = ProgramGenerationMetric(test_cases=self._extract_test_cases())
 
-    def evolve(self, num_iterations: int = 50, rollout_size: int = 4) -> DSPyProgramGenerator:
+    def evolve(self) -> DSPyProgramGenerator:
         optimizer: GEPA = GEPA(
-            metric=self.metric,
+            # TODO: fix type; update metric argument to not use cast
+            metric=cast(GEPAFeedbackMetric, cast(object, self.metric)),
             track_stats=True,
             track_best_outputs=True,
             log_dir=str(self.output_dir / "gepa_logs"),

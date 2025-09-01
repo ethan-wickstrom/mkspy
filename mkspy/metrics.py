@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, Optional, Dict, List, Callable, Tuple
 import ast
 import dspy
-from dspy.primitives.prediction import Prediction
-from dspy.teleprompt.gepa.gepa_utils import DSPyTrace
+from dspy import Prediction, Example
+from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
 
 
 class ProgramGenerationMetric:
@@ -14,7 +14,14 @@ class ProgramGenerationMetric:
         self.test_cases: List[Tuple[Any, Any]] = test_cases
         self.weights: Dict[str, float] = {"syntax": syntax_weight, "execution": execution_weight, "quality": quality_weight}
 
-    def __call__(self, gold: dspy.Example, pred: Prediction, trace: Optional[DSPyTrace] = None, pred_name: Optional[str] = None, pred_trace: Optional[DSPyTrace] = None) -> Dict[str, Any]:
+    def __call__(
+        self,
+        gold: Example,
+        pred: Prediction,
+        trace: Optional["DSPyTrace"] = None,
+        pred_name: str | None = None,
+        pred_trace: Optional["DSPyTrace"] = None,
+    ) -> float | ScoreWithFeedback:
         feedback_parts: List[str] = []
         scores: Dict[str, float] = {"syntax": 0.0, "execution": 0.0, "quality": 0.0}
 
@@ -65,7 +72,7 @@ class ProgramGenerationMetric:
             *self._generate_suggestions(scores, pred),
         ])
 
-        return {"score": total_score, "feedback": feedback}
+        return ScoreWithFeedback(score=total_score, feedback=feedback)
 
     def _validate_dspy_structure(self, code: str) -> Dict[str, Any]:
         result: Dict[str, Any] = {"valid": False, "num_predictors": 0, "num_methods": 0, "errors": ""}

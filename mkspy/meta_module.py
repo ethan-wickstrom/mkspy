@@ -16,6 +16,7 @@ class DSPyProgramGenerator(dspy.Module):
     """Meta-module that generates complete DSPy programs."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.spec_generator: dspy.Module = dspy.ChainOfThought(ProgramSpec)
         self.code_refiner: dspy.Module = dspy.Predict("code, requirements -> refined_code")
         self.validator: dspy.Module = dspy.Predict("code -> validation_result, errors")
@@ -38,6 +39,6 @@ class DSPyProgramGenerator(dspy.Module):
             errors=validation.errors,
         )
 
-    def save(self, path: Path, *, save_program: bool = True) -> None:  # type: ignore[override]
-        """Persist generated program; stubbed for tests."""
+    def save(self, path: Path, save_program: bool = True, modules_to_serialize=None) -> None:  # type: ignore[override]
+        """Persist generated program; stub implementation to satisfy type checkers."""
         return None
