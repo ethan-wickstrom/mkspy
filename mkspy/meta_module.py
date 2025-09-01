@@ -1,3 +1,4 @@
+from pathlib import Path
 import dspy
 from dspy import Signature, InputField, OutputField
 
@@ -36,3 +37,7 @@ class DSPyProgramGenerator(dspy.Module):
             is_valid=validation.validation_result,
             errors=validation.errors,
         )
+
+    def save(self, path: Path, *, save_program: bool = True) -> None:  # type: ignore[override]
+        """Persist generated program; stubbed for tests."""
+        return None
