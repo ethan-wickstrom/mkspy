@@ -17,7 +17,7 @@ def _iter_py_files(root: Path) -> Iterator[Path]:
 def cmd_scan(args: argparse.Namespace) -> None:
     for path in _iter_py_files(Path(args.root)):
         rec = scan_code_for_ast_usage(path.read_text(encoding="utf-8"), str(path))
-        data: dict[str, bool | list[str]] = rec.to_dict()
+        data: dict[str, str | bool | list[str] | list[int]] = rec.to_dict()
         if data["import_ast"] or data["from_ast_imports"] or data["attr_uses"]:
             print(data)
 

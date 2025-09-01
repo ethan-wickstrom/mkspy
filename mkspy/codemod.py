@@ -38,7 +38,7 @@ class AstUsageRecord:
     attr_uses: list[str] = field(default_factory=list)
     lines: list[int] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self) -> dict[str, str | bool | list[str] | list[int]]:
         return {
             "path": self.path,
             "import_ast": self.import_ast,
