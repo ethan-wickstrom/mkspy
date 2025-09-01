@@ -1,34 +1,8 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Iterator
 
-from .codemod import scan_code_for_ast_usage, codemod_ast_to_libcst
 from .author import get_program_author, optimize_program_author, default_author_trainset
-
-
-def _iter_py_files(root: Path) -> Iterator[Path]:
-    for p in root.rglob("*.py"):
-        if any(part in {".git", ".venv", "venv", "__pycache__"} for part in p.parts):
-            continue
-        yield p
-
-
-def cmd_scan(args: argparse.Namespace) -> None:
-    for path in _iter_py_files(Path(args.root)):
-        rec = scan_code_for_ast_usage(path.read_text(encoding="utf-8"), str(path))
-        data: dict[str, str | bool | list[str] | list[int]] = rec.to_dict()
-        if data["import_ast"] or data["from_ast_imports"] or data["attr_uses"]:
-            print(data)
-
-
-def cmd_codemod(args: argparse.Namespace) -> None:
-    for path in _iter_py_files(Path(args.root)):
-        src: str = path.read_text(encoding="utf-8")
-        dst: str = codemod_ast_to_libcst(src)
-        if dst != src:
-            path.write_text(dst, encoding="utf-8")
-            print(f"Rewrote {path}")
 
 
 def cmd_author(args: argparse.Namespace) -> None:
@@ -113,14 +87,6 @@ def cmd_optimize_author(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser("mkspy")
     sub = p.add_subparsers(required=True)
-
-    s = sub.add_parser("scan", help="Scan a tree for built-in `ast` usage")
-    s.add_argument("root", help="Directory to scan")
-    s.set_defaults(func=cmd_scan)
-
-    s = sub.add_parser("codemod", help="Rewrite built-in `ast` usage to LibCST")
-    s.add_argument("root", help="Directory to transform in-place")
-    s.set_defaults(func=cmd_codemod)
 
     s = sub.add_parser("author", help="Use an LLM agent to write a DSPy program from requirements")
     s.add_argument("requirements", nargs="?", help="Inline requirements text. If omitted, read stdin.")

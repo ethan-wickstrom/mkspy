@@ -18,7 +18,11 @@ from .model import (
     DSPySignatureBinding,
 )
 from .validation import prune_unused_imports
-from .codemod import codemod_ast_to_libcst
+from .cst_utils import score_program
+
+# This module focuses on "authoring": synthesizing minimal DSPy programs,
+# exposing a program authoring agent, and defining a GEPA-compatible metric.
+# LibCST analysis lives in mkspy.cst_utils for orthogonality.
 
 
 def _baseline_signature(requirements: str) -> DSPySignature:
@@ -52,108 +56,6 @@ def _baseline_class() -> DSPyClass:
     )
 
 
-def _two_stage_signatures(requirements: str) -> list[DSPySignature]:
-    """Build two explicit, domain-agnostic contracts: Reasoning and Extract.
-
-    Reasoning: question -> reasoning (transparent, step-by-step for any domain)
-    Extract: question, reasoning -> answer (final answer only; format-correct)
-    """
-    reasoning_notes = (
-        "Think step-by-step and keep the chain of thought concise.\n"
-        "- Use ordered, verifiable steps; cite constraints from the prompt.\n"
-        "- Avoid speculation; ensure every step supports the conclusion.\n"
-        "- Check for contradictions, missing constraints, or leaps in logic.\n"
-        "- Keep domain-appropriate terminology (math, code, policy, etc.).\n"
-    )
-    extract_notes = (
-        "Extract ONLY the final answer as a string.\n"
-        "General rules:\n"
-        "- Do not add preambles like 'The answer is'.\n"
-        "- Do not use LaTeX, markdown, or extra punctuation.\n"
-        "- If the task asks for a single token/label, output that token only.\n"
-        "- If numeric, output the bare number (e.g., -128), no units unless required.\n"
-        "- If boolean, output true/false or yes/no exactly as requested.\n"
-        "- If a specific JSON or code snippet is requested, output exactly that snippet.\n"
-        "- If asked to combine multiple values (e.g., sum/product/max), return only the requested aggregate.\n"
-    )
-
-    if requirements.strip():
-        reasoning_doc = requirements.strip() + "\n\n" + reasoning_notes
-        extract_doc = requirements.strip() + "\n\n" + extract_notes
-    else:
-        reasoning_doc = "Two-stage solver: reason step-by-step.\n\n" + reasoning_notes
-        extract_doc = "Two-stage solver: extract final answer only.\n\n" + extract_notes
-
-    sig_reason = DSPySignature(
-        name="Reasoning",
-        docstring=reasoning_doc,
-        inputs=[DSPyField("question", "str", "Problem statement")],
-        outputs=[DSPyField("reasoning", "str", "Transparent derivation", is_input=False)],
-    )
-    sig_extract = DSPySignature(
-        name="Extract",
-        docstring=extract_doc,
-        inputs=[
-            DSPyField("question", "str", "Problem statement"),
-            DSPyField("reasoning", "str", "Derivation text"),
-        ],
-        outputs=[DSPyField("answer", "str", "Final answer only", is_input=False)],
-    )
-    return [sig_reason, sig_extract]
-
-
-def _two_stage_class() -> DSPyClass:
-    fwd = DSPyMethod(
-        name="forward",
-        parameters=[DSPyParameter("self"), DSPyParameter("question", "str")],
-        return_type="dspy.Prediction",
-        body=[
-            DSPyAssignment("r", "self.reasoner(question=question).reasoning"),
-            DSPyAssignment("a", "self.extractor(question=question, reasoning=r).answer"),
-            DSPyReturn("dspy.Prediction(reasoning=r, answer=a)"),
-        ],
-    )
-    return DSPyClass(
-        name="Program",
-        docstring="Two-stage solver: reason step-by-step, then extract final answer only.",
-        methods=[fwd],
-    )
-
-
-def generate_two_stage_solver(requirements: str = "") -> str:
-    """Emit a two-stage solver program with explicit contracts and wiring.
-
-    - Reasoning(question) -> reasoning via dspy.ChainOfThought
-    - Extract(question, reasoning) -> answer via dspy.Predict
-    - forward returns dspy.Prediction(reasoning=..., answer=...)
-    """
-    p = DSPyProgram(
-        imports=[
-            DSPyImport(module="dspy"),
-            DSPyImport(from_module="typing", imported_names=["Optional", "List", "Dict", "Any"]),
-        ],
-        signatures=_two_stage_signatures(requirements),
-        main_class=_two_stage_class(),
-        bound_modules=[
-            DSPySignatureBinding(
-                module_name="reasoner",
-                signature_name="Reasoning",
-                module_type="ChainOfThought",
-                parameters={},
-            ),
-            DSPySignatureBinding(
-                module_name="extractor",
-                signature_name="Extract",
-                module_type="Predict",
-                parameters={},
-            ),
-        ],
-        program_var="program",
-    )
-    code = prune_unused_imports(p.to_code())
-    return codemod_ast_to_libcst(code)
-
-
 def generate_structured_code(requirements: str) -> str:
     """Synthesize a minimal, runnable DSPy program from requirements.
 
@@ -181,13 +83,7 @@ def generate_structured_code(requirements: str) -> str:
     code = p.to_code()
     # Best-effort cleanup
     code = prune_unused_imports(code)
-    code = codemod_ast_to_libcst(code)
     return code
-
-
-def postprocess_code(code: str) -> str:
-    """Apply standard postprocessing (import pruning + codemod)."""
-    return codemod_ast_to_libcst(prune_unused_imports(code))
 
 
 def get_program_author(lm: Any | None = None) -> Any:
@@ -196,7 +92,6 @@ def get_program_author(lm: Any | None = None) -> Any:
     The returned module has signature: requirements -> source
     Tools used:
       - generate_structured_code(requirements) -> source
-      - postprocess_code(source) -> source
     """
     import importlib
 
@@ -207,7 +102,7 @@ def get_program_author(lm: Any | None = None) -> Any:
         requirements: str = dspy.InputField(desc="User's intent and constraints")
         source: str = dspy.OutputField(desc="Python code for a DSPy program")
 
-    # Expose tools with informative docstrings for ReAct
+    # Expose tool with informative docstring for ReAct
     def _tool_generate(requirements: str) -> str:
         """generate_structured_code(requirements: str) -> str
 
@@ -216,26 +111,10 @@ def get_program_author(lm: Any | None = None) -> Any:
         """
         return generate_structured_code(requirements)
 
-    def _tool_postprocess(code: str) -> str:
-        """postprocess_code(code: str) -> str
-
-        Clean up imports and rewrite builtin `ast` usage to LibCST idioms.
-        Returns the transformed Python source.
-        """
-        return postprocess_code(code)
-
     class ProgramAuthor(dspy.Module):
         def __init__(self):
             super().__init__()
-            def _tool_generate_two_stage(requirements: str = "") -> str:
-                """generate_two_stage_solver(requirements: str = "") -> str
-
-                Build a two-stage DSPy solver program: (1) Reasoning, (2) Extract-only answer.
-                Returns Python source as a string.
-                """
-                return generate_two_stage_solver(requirements)
-
-            tools = [_tool_generate, _tool_generate_two_stage, _tool_postprocess]
+            tools = [_tool_generate]
             self.agent = dspy.ReAct(AuthorSig, tools=tools)
             if lm is not None:
                 dspy.configure(lm=lm)
@@ -245,70 +124,6 @@ def get_program_author(lm: Any | None = None) -> Any:
             return dspy.Prediction(source=pred.source)
 
     return ProgramAuthor()
-
-
-# -----------------------
-# GEPA optimization setup
-# -----------------------
-
-def _score_generated_code(req: str, code: str) -> tuple[float, str]:
-    """Heuristic structural scorer with natural language feedback.
-
-    Criteria (sum to <= 1.0):
-    - Parsable by LibCST (0.2)
-    - Has `import dspy` (0.1)
-    - Has a Signature subclass (0.2)
-    - Has a Module subclass (0.2)
-    - Has forward method (0.1)
-    - Exports a program var (0.1)
-    - Wires a DSPy module (Predict/CoT/ReAct) (0.1)
-    """
-    import libcst as cst
-
-    score = 0.0
-    notes: list[str] = []
-
-    try:
-        _ = cst.parse_module(code)
-        score += 0.2
-    except Exception as e:
-        notes.append(f"Parse error: {e}")
-
-    if "import dspy" in code:
-        score += 0.1
-    else:
-        notes.append("Missing `import dspy`.")
-
-    if "(dspy.Signature):" in code or "(dspy.Signature):" in code.replace(" ", ""):
-        score += 0.2
-    elif "class" in code and "Signature" in code:
-        score += 0.1
-        notes.append("Signature subclass found but shape uncertain.")
-    else:
-        notes.append("Missing `class <Name>(dspy.Signature)`.")
-
-    if "(dspy.Module):" in code or "(dspy.Module):" in code.replace(" ", ""):
-        score += 0.2
-    else:
-        notes.append("Missing `class <Name>(dspy.Module)`.")
-
-    if "def forward(" in code:
-        score += 0.1
-    else:
-        notes.append("Missing `def forward(...)`.")
-
-    if "program = " in code and "()" in code:
-        score += 0.1
-    else:
-        notes.append("Missing `program = <MainClass>()` export.")
-
-    if any(k in code for k in ("dspy.Predict(", "dspy.ChainOfThought(", "dspy.ReAct(")):
-        score += 0.1
-    else:
-        notes.append("No DSPy module constructed (Predict/ChainOfThought/ReAct).")
-
-    msg = "OK" if not notes else "\n".join(notes)
-    return min(score, 1.0), msg
 
 
 def author_metric(
@@ -321,14 +136,13 @@ def author_metric(
     """GEPA-compatible metric with natural-language feedback.
 
     Expects ``example.requirements`` and ``prediction.source`` (from ProgramAuthor).
+    Uses LibCST-based scoring to provide robust structure feedback.
     """
-    req: str = str(getattr(example, "requirements", None) or getattr(example, "input", ""))
+    _req: str = str(getattr(example, "requirements", None) or getattr(example, "input", ""))
     src: str = str(getattr(prediction, "source", ""))
-    raw_score: float
-    feedback: str
-    raw_score, feedback = _score_generated_code(req, src)
-    score: float = float(raw_score)
-    return ScoreWithFeedback(score=score, feedback=feedback)
+
+    raw_score, feedback = score_program(src)
+    return ScoreWithFeedback(score=float(raw_score), feedback=feedback)
 
 
 def _examples_from_requirements(reqs: list[str]):
@@ -372,8 +186,6 @@ def optimize_program_author(
     - gepa_kwargs: forwarded to GEPA (e.g., max_metric_calls, num_threads)
     """
     import importlib
-    from dspy import GEPA  # noqa: F401
-
     dspy = importlib.import_module("dspy")
 
     if gen_model is not None:

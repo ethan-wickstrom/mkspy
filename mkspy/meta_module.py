@@ -1,44 +1,59 @@
-from pathlib import Path
+from __future__ import annotations
+
 import dspy
-from dspy import Signature, InputField, OutputField
+from dspy import Signature, InputField, OutputField, Code
+
+from .author import generate_structured_code
+from .cst_utils import validate_program, inspect_dspy_program
 
 
 class ProgramSpec(Signature):
-    """Generate specifications for a DSPy program."""
+    """Generate specifications and code for a DSPy program."""
     task_description: str = InputField(desc="What the program should accomplish")
 
-    signature_spec: str = OutputField(desc="Signature definition in DSPy format")
-    module_architecture: str = OutputField(desc="Module composition and flow")
-    implementation_code: str = OutputField(desc="Complete DSPy module implementation")
+    # We favor typed outputs; code is a dspy.Code subtype (python).
+    signature: str = OutputField(desc="Signature definition in DSPy style, if known")
+    architecture: str = OutputField(desc="Module composition/flow summary")
+    code: Code["python"] = OutputField(desc="Complete DSPy module implementation")
+    is_valid: bool = OutputField(desc="Validation result from static analysis")
+    errors: list[str] = OutputField(desc="Validation errors, if any")
 
 
 class DSPyProgramGenerator(dspy.Module):
-    """Meta-module that generates complete DSPy programs."""
+    """Meta-module that synthesizes minimal DSPy programs and validates them with LibCST.
+
+    - No persistence or GEPA logic here (separation of concerns).
+    - Deterministic baseline synthesis (no LM required for generation).
+    - Static validation uses shared LibCST analyzer.
+    """
 
     def __init__(self) -> None:
         super().__init__()
-        self.spec_generator: dspy.Module = dspy.ChainOfThought(ProgramSpec)
-        self.code_refiner: dspy.Module = dspy.Predict("code, requirements -> refined_code")
-        self.validator: dspy.Module = dspy.Predict("code -> validation_result, errors")
 
     def forward(self, task_description: str) -> dspy.Prediction:
-        spec: dspy.Prediction = self.spec_generator(task_description=task_description)
+        # 1) Synthesize a minimal but runnable DSPy program.
+        src: str = generate_structured_code(task_description)
 
-        refined: dspy.Prediction = self.code_refiner(
-            code=spec.implementation_code,
-            requirements=task_description,
+        # 2) Validate with LibCST and compose summary fields.
+        ok, errs = validate_program(src)
+        report = inspect_dspy_program(src)
+
+        # Signature summary: best-effort from the synthesized baseline.
+        # The baseline always creates `class UserTask(dspy.Signature)`, with text->result.
+        sig_summary = "UserTask: text: str -> result: str"
+
+        # Architecture summary: minimal counts of predictor constructors and class names.
+        ctor_counts = ", ".join(f"{k}={v}" for k, v in report.ctor_counts.items())
+        arch_summary = (
+            f"signatures={sorted(report.signature_classes)}, "
+            f"modules={sorted(report.module_classes)}, "
+            f"predictors=({ctor_counts})"
         )
-
-        validation: dspy.Prediction = self.validator(code=refined.refined_code)
 
         return dspy.Prediction(
-            code=refined.refined_code,
-            signature=spec.signature_spec,
-            architecture=spec.module_architecture,
-            is_valid=validation.validation_result,
-            errors=validation.errors,
+            code=src,
+            signature=sig_summary,
+            architecture=arch_summary,
+            is_valid=ok,
+            errors=errs,
         )
-
-    def save(self, path: Path, save_program: bool = True, modules_to_serialize=None) -> None:  # type: ignore[override]
-        """Persist generated program; stub implementation to satisfy type checkers."""
-        return None
