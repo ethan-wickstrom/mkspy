@@ -30,8 +30,6 @@ class GEPAEvolver:
             track_best_outputs=True,
             log_dir=str(self.output_dir / "gepa_logs"),
         )
-
-        optimized_generator = optimizer.compile(self.generator, trainset=self.trainset, valset=self.valset)
         optimized_generator = optimizer.compile(self.generator, trainset=self.trainset, valset=self.valset)
         self._save_results(optimized_generator)
         return optimized_generator
