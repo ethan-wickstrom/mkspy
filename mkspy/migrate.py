@@ -17,6 +17,9 @@ def dict_to_spec(data: Dict[str, Any]) -> TaskSpec:
     raw_cases: Any = data.get("cases", [])
     if not isinstance(raw_cases, list) or not all(isinstance(c, str) for c in raw_cases):
         raise ValueError("cases must be a list of strings")
+    for case in raw_cases:
+        if "->" not in case:
+            raise ValueError(f"Invalid case format: {case}")
     input_type_raw: Any = data.get("input")
     if input_type_raw is not None and not isinstance(input_type_raw, TypePrimitive):
         raise ValueError("input must be TypePrimitive")

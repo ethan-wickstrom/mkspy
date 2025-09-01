@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, cast
 import json
 import dspy
 from dspy import GEPA
@@ -32,8 +32,9 @@ class GEPAEvolver:
             log_dir=str(self.output_dir / "gepa_logs"),
         )
 
-        optimized_generator: DSPyProgramGenerator = optimizer.compile(
-            self.generator, trainset=self.trainset, valset=self.valset
+        optimized_generator: DSPyProgramGenerator = cast(
+            DSPyProgramGenerator,
+            optimizer.compile(self.generator, trainset=self.trainset, valset=self.valset),
         )
         self._save_results(optimized_generator)
         return optimized_generator

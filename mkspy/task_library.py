@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import (
@@ -289,13 +290,21 @@ class Filter(Operation):
 class Reduce(Operation):
     """Aggregate list elements using a binary function.
 
+    Parameters
+    ----------
+    fn
+        Binary operation lifted as a composable.
+    initial
+        Optional initial value supplied when reducing an empty list.
+
     Raises
     ------
     ValueError
-        If called with an empty input list.
+        If called with an empty input list and no ``initial`` value.
     """
 
     fn: Composable
+    initial: Optional[Any] = None
 
     def __post_init__(self) -> None:
         fn_checked: Composable = _ensure_composable(self.fn)
@@ -306,14 +315,23 @@ class Reduce(Operation):
     def _build_module(self) -> dspy.Module:
         """Return a DSPy module that reduces a list."""
         fn_module: dspy.Module = self.fn.to_module()
+        initial: Optional[Any] = self.initial
 
         class _Reduce(dspy.Module):
             def forward(self, items: List[Any]) -> Any:
                 iterator: List[Any] = list(items)
                 if not iterator:
-                    raise ValueError("Reduce: empty input")
-                acc: Any = iterator[0]
-                for item in iterator[1:]:
+                    if initial is None:
+                        raise ValueError("Reduce: empty input")
+                    return initial
+                acc: Any
+                if initial is None:
+                    acc = iterator[0]
+                    rest: List[Any] = iterator[1:]
+                else:
+                    acc = fn_module(initial, iterator[0])
+                    rest = iterator[1:]
+                for item in rest:
                     acc = fn_module(acc, item)
                 return acc
 
@@ -636,9 +654,14 @@ class Classify(Operation):
 
     def _build_module(self) -> dspy.Module:
         """Return a DSPy classifier module for the given labels."""
-        label_names: str = ",".join(self.labels)
+        label_names: str = ",".join(self._sanitize(label) for label in self.labels)
         signature: str = f"{self.input_type.name.lower()}->{label_names}"
         return dspy.Predict(signature)
+
+    @staticmethod
+    def _sanitize(label: str) -> str:
+        """Sanitize ``label`` for safe use in signatures."""
+        return re.sub(r"[^A-Za-z0-9_]+", "_", label)
 
 
 TASK_LIBRARY: List[TaskSpec] = [
