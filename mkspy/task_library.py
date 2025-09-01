@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, field
+
 from threading import Lock
 from typing import (
     Any,
@@ -16,7 +17,6 @@ from typing import (
 )
 
 import dspy
-
 
 # ---------------------------------------------------------------------------
 # Primitives
@@ -41,6 +41,7 @@ def get_type(name: str) -> "TypePrimitive":
     return _TYPE_REGISTRY[name]
 
 
+
 @dataclass(frozen=True)
 class TypePrimitive:
     """Atomic type descriptor contributing only data shape."""
@@ -59,7 +60,6 @@ class TypePrimitive:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.name})"
 
-
 Text: TypePrimitive = TypePrimitive("Text")
 Number: TypePrimitive = TypePrimitive("Number")
 DictType: TypePrimitive = TypePrimitive("Dict")
@@ -68,7 +68,7 @@ DictType: TypePrimitive = TypePrimitive("Dict")
 @dataclass(frozen=True)
 class ListType(TypePrimitive):
     """Type representing a list of elements of a given type."""
-
+    
     element: TypePrimitive
     name: str = field(init=False)
 
@@ -80,7 +80,7 @@ class ListType(TypePrimitive):
 @dataclass(frozen=True)
 class Literal(TypePrimitive):
     """Type constrained to one of a finite set of string values."""
-
+    
     values: Tuple[str, ...]
     name: str = field(init=False)
 
@@ -105,13 +105,15 @@ class ToDSPyModule(Protocol):
 class Composable(ToDSPyModule, Protocol):
     """Protocol for operations with typed inputs and outputs."""
 
+    
+class Composable(Protocol):
     @property
     def input_type(self) -> TypePrimitive: ...
 
     @property
     def output_type(self) -> TypePrimitive: ...
 
-
+      
 def _ensure_composable(value: Any) -> Composable:
     """Validate that ``value`` conforms to the :class:`Composable` protocol."""
 
@@ -428,7 +430,7 @@ class FreeForm:
 @dataclass(frozen=True)
 class NaturalSpec:
     """Natural language task description within typed bounds."""
-
+  
     domain: str
     goal: str
     constraints: Tuple[str, ...] = ()
@@ -441,7 +443,6 @@ class NaturalSpec:
             prompt = f"{prompt}. Constraints: {'; '.join(self.constraints)}"
         signature: str = f"{self.domain}_input->output"
         return dspy.Predict(signature)
-
 
 Process = Union[Composable, NaturalSpec]
 
@@ -539,7 +540,7 @@ class Classify(Operation):
         signature: str = f"{self.input_type.name.lower()}->{label_names}"
         return dspy.Predict(signature)
 
-
+      
 TASK_LIBRARY: List[TaskSpec] = [
     task(
         "Classify sentiment in product reviews",
