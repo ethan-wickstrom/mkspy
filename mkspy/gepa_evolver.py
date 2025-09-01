@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 import json
 import dspy
 from dspy import GEPA
@@ -42,15 +42,13 @@ class GEPAEvolver:
         for task in tasks:
             example: dspy.Example = dspy.Example(
                 task_description=task["description"],
-                input_types=task.get("input_types", "str"),
-                output_requirements=task.get("output_requirements", "str"),
                 expected_signature=task.get("expected_signature"),
-            ).with_inputs("task_description", "input_types", "output_requirements")
+            ).with_inputs("task_description")
             dataset.append(example)
         return dataset
 
-    def _extract_test_cases(self) -> List[Dict[str, Any]]:
-        cases: List[Dict[str, Any]] = []
+    def _extract_test_cases(self) -> List[Tuple[Any, Any]]:
+        cases: List[Tuple[Any, Any]] = []
         for task in self.task_library:
             for case in task.get("test_cases", []):
                 cases.append(case)

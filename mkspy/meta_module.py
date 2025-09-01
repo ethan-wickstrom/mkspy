@@ -1,13 +1,10 @@
 import dspy
-from typing import Any
 from dspy import Signature, InputField, OutputField
 
 
 class ProgramSpec(Signature):
     """Generate specifications for a DSPy program."""
     task_description: str = InputField(desc="What the program should accomplish")
-    input_types: str = InputField(desc="Expected input data types and structure")
-    output_requirements: str = InputField(desc="Required output format and constraints")
 
     signature_spec: str = OutputField(desc="Signature definition in DSPy format")
     module_architecture: str = OutputField(desc="Module composition and flow")
@@ -22,12 +19,8 @@ class DSPyProgramGenerator(dspy.Module):
         self.code_refiner: dspy.Module = dspy.Predict("code, requirements -> refined_code")
         self.validator: dspy.Module = dspy.Predict("code -> validation_result, errors")
 
-    def forward(self, task_description: str, **kwargs: Any) -> dspy.Prediction:
-        spec: dspy.Prediction = self.spec_generator(
-            task_description=task_description,
-            input_types=kwargs.get("input_types", "str"),
-            output_requirements=kwargs.get("output_requirements", "str"),
-        )
+    def forward(self, task_description: str) -> dspy.Prediction:
+        spec: dspy.Prediction = self.spec_generator(task_description=task_description)
 
         refined: dspy.Prediction = self.code_refiner(
             code=spec.implementation_code,

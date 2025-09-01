@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Dict, List, Callable
+from typing import Any, Optional, Dict, List, Callable, Tuple
 import ast
 import dspy
 from dspy.primitives.prediction import Prediction
@@ -10,8 +10,8 @@ from dspy.teleprompt.gepa.gepa import DSPyTrace
 class ProgramGenerationMetric:
     """Comprehensive metric for evaluating generated DSPy programs."""
 
-    def __init__(self, test_cases: List[Dict[str, Any]], syntax_weight: float = 0.3, execution_weight: float = 0.4, quality_weight: float = 0.3) -> None:
-        self.test_cases: List[Dict[str, Any]] = test_cases
+    def __init__(self, test_cases: List[Tuple[Any, Any]], syntax_weight: float = 0.3, execution_weight: float = 0.4, quality_weight: float = 0.3) -> None:
+        self.test_cases: List[Tuple[Any, Any]] = test_cases
         self.weights: Dict[str, float] = {"syntax": syntax_weight, "execution": execution_weight, "quality": quality_weight}
 
     def __call__(self, gold: dspy.Example, pred: Prediction, trace: Optional[DSPyTrace] = None, pred_name: Optional[str] = None, pred_trace: Optional[DSPyTrace] = None) -> Dict[str, Any]:
@@ -88,7 +88,7 @@ class ProgramGenerationMetric:
             result["errors"] = "no dspy.Predict usage found"
         return result
 
-    def _test_execution(self, code: str, test_cases: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _test_execution(self, code: str, test_cases: List[Tuple[Any, Any]]) -> Dict[str, Any]:
         namespace: Dict[str, Any] = {"dspy": dspy}
         failures: List[Dict[str, str]] = []
         passed: int = 0
@@ -110,17 +110,15 @@ class ProgramGenerationMetric:
         func: Optional[Callable[[Any], Any]] = namespace.get("solve")
         if func is None:
             return {"pass_rate": 0.0, "passed": 0, "total": total, "failures": [{"test": "__entry__", "error": "solve function not found"}]}
-        for case in test_cases:
-            inp: Any = case.get("input")
-            expected: Any = case.get("expected")
+        for given, expected in test_cases:
             try:
-                output: Any = func(inp)
+                output: Any = func(given)
                 if output == expected:
                     passed += 1
                 else:
-                    failures.append({"test": str(inp), "error": f"expected {expected!r}, got {output!r}"})
+                    failures.append({"test": str(given), "error": f"expected {expected!r}, got {output!r}"})
             except Exception as e:
-                failures.append({"test": str(inp), "error": str(e)})
+                failures.append({"test": str(given), "error": str(e)})
         pass_rate: float = passed / total if total > 0 else 0.0
         return {"pass_rate": pass_rate, "passed": passed, "total": total, "failures": failures}
 
