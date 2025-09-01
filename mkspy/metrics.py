@@ -4,7 +4,7 @@ from typing import Any, Optional, Dict, List, Callable, Tuple
 import ast
 import dspy
 from dspy.primitives.prediction import Prediction
-from dspy.teleprompt.gepa.gepa import DSPyTrace
+from dspy.teleprompt.gepa.gepa_utils import DSPyTrace
 
 
 class ProgramGenerationMetric:
