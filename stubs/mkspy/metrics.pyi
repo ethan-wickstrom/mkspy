@@ -1,6 +1,0 @@
-from typing import Any, Dict, Optional, Tuple
-from dspy.teleprompt.gepa.gepa import DSPyTrace
-
-class ProgramGenerationMetric:
-    def __init__(self, test_cases: list[Tuple[Any, Any]]) -> None: ...
-    def __call__(self, gold: Any, pred: Any, trace: Optional[DSPyTrace] = ...) -> Dict[str, Any]: ...
