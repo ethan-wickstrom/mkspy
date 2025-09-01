@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import inspect
 import re
 from dataclasses import dataclass, field
 from threading import Lock
@@ -216,8 +217,8 @@ class Operation(ToDSPyModule):
             object.__setattr__(self, "_module", module)
         return module
 
-    def __call__(self, *args: Any) -> Any:
-        return self.to_module()(*args)
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return self.to_module()(*args, **kwargs)
 
     def __repr__(self) -> str:
         return (
@@ -311,8 +312,21 @@ class Reduce(Operation):
     def __post_init__(self) -> None:
         fn_checked: Composable = _ensure_composable(self.fn)
         object.__setattr__(self, "fn", fn_checked)
-        object.__setattr__(self, "input_type", list_type(fn_checked.input_type))
-        object.__setattr__(self, "output_type", fn_checked.output_type)
+        # If the function advertises a binary input as a TupleType, derive
+        # reduce's list/item and accumulator types from it. Otherwise, fall back
+        # to treating the function's input_type as the element type.
+        if isinstance(fn_checked.input_type, TupleType) and len(fn_checked.input_type.elements) == 2:
+            acc_tp, item_tp = fn_checked.input_type.elements
+            if fn_checked.output_type is not acc_tp:
+                raise TypeError(
+                    "Reduce: fn output type must match accumulator type; "
+                    f"got input={fn_checked.input_type.name} output={fn_checked.output_type.name}"
+                )
+            object.__setattr__(self, "input_type", list_type(item_tp))
+            object.__setattr__(self, "output_type", acc_tp)
+        else:
+            object.__setattr__(self, "input_type", list_type(fn_checked.input_type))
+            object.__setattr__(self, "output_type", fn_checked.output_type)
 
     def _build_module(self) -> dspy.Module:
         """Return a DSPy module that reduces a list."""
@@ -328,6 +342,26 @@ class Reduce(Operation):
                     return initial
                 acc: Any = iterator[0] if initial is None else initial
                 rest: List[Any] = iterator[1:] if initial is None else iterator
+                # Enforce that the reducer is binary and accepts two positional args.
+                sig = inspect.signature(fn_module.forward)
+                params = list(sig.parameters.values())
+                has_var_positional: bool = any(
+                    p.kind is inspect.Parameter.VAR_POSITIONAL for p in params
+                )
+                positional_params = [
+                    p
+                    for p in params
+                    if p.kind
+                    in (
+                        inspect.Parameter.POSITIONAL_ONLY,
+                        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    )
+                ]
+                if not has_var_positional and len(positional_params) < 2:
+                    raise TypeError(
+                        "Reduce: fn must be a binary operation that accepts two positional arguments; "
+                        f"got forward{sig}"
+                    )
                 for item in rest:
                     acc = fn_module(acc, item)
                 return acc
@@ -737,4 +771,3 @@ __all__: List[str] = [
     "FreeForm",
     "NaturalSpec",
 ]
-
