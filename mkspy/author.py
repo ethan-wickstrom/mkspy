@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from dspy.primitives import Example, Prediction
+from dspy import Example, Prediction
 from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
 
 from model import (
