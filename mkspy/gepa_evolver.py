@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, cast
+from typing import Any, Dict, List, Tuple
 import json
 import dspy
 from dspy import GEPA
-from dspy.teleprompt.gepa.gepa import GEPAFeedbackMetric
 
 from .meta_module import DSPyProgramGenerator
 from .metrics import ProgramGenerationMetric
 from .task_library import TaskSpec
-
 
 class GEPAEvolver:
     """Evolve DSPy program generators using GEPA optimization."""
@@ -23,21 +21,17 @@ class GEPAEvolver:
         self.generator: DSPyProgramGenerator = DSPyProgramGenerator()
         self.trainset: List[dspy.Example] = self._create_dataset(task_library[:80])
         self.valset: List[dspy.Example] = self._create_dataset(task_library[80:])
-        self.metric: ProgramGenerationMetric = ProgramGenerationMetric(test_cases=self._extract_test_cases())
+        self.metric: Any = ProgramGenerationMetric(test_cases=self._extract_test_cases())
 
-    def evolve(self) -> DSPyProgramGenerator:
+    def evolve(self) -> dspy.Module:
         optimizer: GEPA = GEPA(
-            # TODO: fix type; update metric argument to not use cast
-            metric=cast(GEPAFeedbackMetric, cast(object, self.metric)),
+            metric=self.metric,
             track_stats=True,
             track_best_outputs=True,
             log_dir=str(self.output_dir / "gepa_logs"),
         )
 
-        optimized_generator: DSPyProgramGenerator = cast(
-            DSPyProgramGenerator,
-            optimizer.compile(self.generator, trainset=self.trainset, valset=self.valset),
-        )
+        optimized_generator = optimizer.compile(self.generator, trainset=self.trainset, valset=self.valset)
         self._save_results(optimized_generator)
         return optimized_generator
 
@@ -58,7 +52,7 @@ class GEPAEvolver:
                 cases.append(case)
         return cases
 
-    def _save_results(self, optimized_generator: DSPyProgramGenerator) -> None:
+    def _save_results(self, optimized_generator: dspy.Module) -> None:
         optimized_generator.save(self.output_dir / "optimized_generator", save_program=True)
         examples_dir: Path = self.output_dir / "generated_programs"
         examples_dir.mkdir(exist_ok=True)
