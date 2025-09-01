@@ -12,6 +12,7 @@ from typing import (
     Sequence,
     Tuple,
     Union,
+    cast,
     runtime_checkable,
 )
 
@@ -28,11 +29,15 @@ _TYPE_LOCK: Lock = Lock()
 
 
 def _register_type(tp: "TypePrimitive") -> None:
-    """Store a type primitive in the global registry if not present."""
+    """Store ``tp`` in the registry, detecting name collisions."""
 
     with _TYPE_LOCK:
-        if tp.name not in _TYPE_REGISTRY:
-            _TYPE_REGISTRY[tp.name] = tp
+        existing: Optional[TypePrimitive] = _TYPE_REGISTRY.get(tp.name)
+        if existing is not None and existing is not tp:
+            raise ValueError(
+                f"Type '{tp.name}' already registered with different instance"
+            )
+        _TYPE_REGISTRY.setdefault(tp.name, tp)
 
 
 def get_type(name: str) -> "TypePrimitive":
@@ -102,6 +107,59 @@ class TupleType(TypePrimitive):
         super().__post_init__()
 
 
+@dataclass(frozen=True)
+class UnionType(TypePrimitive):
+    """Type representing a value that may be one of several types."""
+
+    options: Tuple[TypePrimitive, ...]
+    name: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        names: str = " | ".join(option.name for option in self.options)
+        object.__setattr__(self, "name", f"Union[{names}]")
+        super().__post_init__()
+
+
+def literal_type(values: Tuple[str, ...]) -> TypePrimitive:
+    """Return canonical :class:`Literal` for ``values``."""
+
+    name: str = f"Literal{values}"
+    try:
+        return get_type(name)
+    except KeyError:
+        return Literal(values)
+
+
+def list_type(element: TypePrimitive) -> ListType:
+    """Return canonical :class:`ListType` for ``element``."""
+
+    name: str = f"List[{element.name}]"
+    try:
+        return cast(ListType, get_type(name))
+    except KeyError:
+        return ListType(element)
+
+
+def tuple_type(elements: Tuple[TypePrimitive, ...]) -> TupleType:
+    """Return canonical :class:`TupleType` for ``elements``."""
+
+    name: str = "Tuple[" + ", ".join(e.name for e in elements) + "]"
+    try:
+        return cast(TupleType, get_type(name))
+    except KeyError:
+        return TupleType(elements)
+
+
+def union_type(options: Tuple[TypePrimitive, ...]) -> UnionType:
+    """Return canonical :class:`UnionType` for ``options``."""
+
+    name: str = "Union[" + " | ".join(o.name for o in options) + "]"
+    try:
+        return cast(UnionType, get_type(name))
+    except KeyError:
+        return UnionType(options)
+
+
 # ---------------------------------------------------------------------------
 # Operations
 # ---------------------------------------------------------------------------
@@ -141,10 +199,22 @@ class Operation(ToDSPyModule):
 
     input_type: TypePrimitive = field(init=False)
     output_type: TypePrimitive = field(init=False)
+    _module: Optional[dspy.Module] = field(default=None, init=False, repr=False)
 
-    def to_module(self) -> dspy.Module:  # pragma: no cover - abstract
-        """Return a DSPy module implementing the operation."""
+    def _build_module(self) -> dspy.Module:  # pragma: no cover - abstract
+        """Construct a DSPy module implementing the operation."""
         raise NotImplementedError
+
+    def to_module(self) -> dspy.Module:
+        """Return a cached DSPy module, constructing lazily."""
+        module: Optional[dspy.Module] = self._module
+        if module is None:
+            module = self._build_module()
+            object.__setattr__(self, "_module", module)
+        return module
+
+    def __call__(self, *args: Any) -> Any:
+        return self.to_module()(*args)
 
     def __repr__(self) -> str:
         return (
@@ -169,10 +239,10 @@ class Map(Operation):
     def __post_init__(self) -> None:
         fn_checked: Composable = _ensure_composable(self.fn)
         object.__setattr__(self, "fn", fn_checked)
-        object.__setattr__(self, "input_type", ListType(fn_checked.input_type))
-        object.__setattr__(self, "output_type", ListType(fn_checked.output_type))
+        object.__setattr__(self, "input_type", list_type(fn_checked.input_type))
+        object.__setattr__(self, "output_type", list_type(fn_checked.output_type))
 
-    def to_module(self) -> dspy.Module:
+    def _build_module(self) -> dspy.Module:
         """Return a DSPy module that maps over list items."""
         fn_module: dspy.Module = self.fn.to_module()
 
@@ -196,10 +266,10 @@ class Filter(Operation):
     def __post_init__(self) -> None:
         pred_checked: Composable = _ensure_composable(self.predicate)
         object.__setattr__(self, "predicate", pred_checked)
-        object.__setattr__(self, "input_type", ListType(pred_checked.input_type))
-        object.__setattr__(self, "output_type", ListType(pred_checked.input_type))
+        object.__setattr__(self, "input_type", list_type(pred_checked.input_type))
+        object.__setattr__(self, "output_type", list_type(pred_checked.input_type))
 
-    def to_module(self) -> dspy.Module:
+    def _build_module(self) -> dspy.Module:
         """Return a DSPy module that filters list items."""
         pred_module: dspy.Module = self.predicate.to_module()
 
@@ -217,17 +287,23 @@ class Filter(Operation):
 
 @dataclass(frozen=True)
 class Reduce(Operation):
-    """Aggregate list elements using a binary function."""
+    """Aggregate list elements using a binary function.
+
+    Raises
+    ------
+    ValueError
+        If called with an empty input list.
+    """
 
     fn: Composable
 
     def __post_init__(self) -> None:
         fn_checked: Composable = _ensure_composable(self.fn)
         object.__setattr__(self, "fn", fn_checked)
-        object.__setattr__(self, "input_type", ListType(fn_checked.input_type))
+        object.__setattr__(self, "input_type", list_type(fn_checked.input_type))
         object.__setattr__(self, "output_type", fn_checked.output_type)
 
-    def to_module(self) -> dspy.Module:
+    def _build_module(self) -> dspy.Module:
         """Return a DSPy module that reduces a list."""
         fn_module: dspy.Module = self.fn.to_module()
 
@@ -235,7 +311,7 @@ class Reduce(Operation):
             def forward(self, items: List[Any]) -> Any:
                 iterator: List[Any] = list(items)
                 if not iterator:
-                    return None
+                    raise ValueError("Reduce: empty input")
                 acc: Any = iterator[0]
                 for item in iterator[1:]:
                     acc = fn_module(acc, item)
@@ -277,15 +353,27 @@ class Sequential(Operation):
         object.__setattr__(self, "input_type", first_checked.input_type)
         object.__setattr__(self, "output_type", second_checked.output_type)
 
-    def to_module(self) -> dspy.Module:
-        """Return a DSPy module composing two stages sequentially."""
-        first_mod: dspy.Module = self.first.to_module()
-        second_mod: dspy.Module = self.second.to_module()
+    def _build_module(self) -> dspy.Module:
+        """Return a DSPy module composing stages sequentially with flattening."""
+        ops: List[Composable] = []
+
+        def collect(op: Composable) -> None:
+            if isinstance(op, Sequential):
+                collect(op.first)
+                collect(op.second)
+            else:
+                ops.append(op)
+
+        collect(self.first)
+        collect(self.second)
+        modules: List[dspy.Module] = [op.to_module() for op in ops]
 
         class _Sequential(dspy.Module):
             def forward(self, value: Any) -> Any:
-                intermediate: Any = first_mod(value)
-                return second_mod(intermediate)
+                result: Any = value
+                for mod in modules:
+                    result = mod(result)
+                return result
 
         return _Sequential()
 
@@ -313,7 +401,7 @@ class Parallel(Operation):
                 f"left {type(left_checked).__name__} input ({left_checked.input_type.name}) "
                 f"does not match right {type(right_checked).__name__} input ({right_checked.input_type.name})"
             )
-        output_tp: TupleType = TupleType(
+        output_tp: TupleType = tuple_type(
             (left_checked.output_type, right_checked.output_type)
         )
         object.__setattr__(self, "left", left_checked)
@@ -321,7 +409,7 @@ class Parallel(Operation):
         object.__setattr__(self, "input_type", left_checked.input_type)
         object.__setattr__(self, "output_type", output_tp)
 
-    def to_module(self) -> dspy.Module:
+    def _build_module(self) -> dspy.Module:
         """Return a DSPy module executing branches in parallel."""
         left_mod: dspy.Module = self.left.to_module()
         right_mod: dspy.Module = self.right.to_module()
@@ -369,7 +457,7 @@ class Conditional(Operation):
         object.__setattr__(self, "input_type", true_checked.input_type)
         object.__setattr__(self, "output_type", true_checked.output_type)
 
-    def to_module(self) -> dspy.Module:
+    def _build_module(self) -> dspy.Module:
         """Return a DSPy module selecting a branch by predicate."""
         true_mod: dspy.Module = self.if_true.to_module()
         false_mod: dspy.Module = self.if_false.to_module()
@@ -403,7 +491,7 @@ class Iterative(Operation):
         object.__setattr__(self, "input_type", body_checked.input_type)
         object.__setattr__(self, "output_type", body_checked.output_type)
 
-    def to_module(self) -> dspy.Module:
+    def _build_module(self) -> dspy.Module:
         """Return a DSPy module that iterates until convergence."""
         body_mod: dspy.Module = self.body.to_module()
 
@@ -544,9 +632,9 @@ class Classify(Operation):
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "input_type", self.input_type_override)
-        object.__setattr__(self, "output_type", Literal(self.labels))
+        object.__setattr__(self, "output_type", literal_type(self.labels))
 
-    def to_module(self) -> dspy.Module:
+    def _build_module(self) -> dspy.Module:
         """Return a DSPy classifier module for the given labels."""
         label_names: str = ",".join(self.labels)
         signature: str = f"{self.input_type.name.lower()}->{label_names}"
@@ -559,8 +647,8 @@ TASK_LIBRARY: List[TaskSpec] = [
         [
             "['The phone is fantastic and works great.', 'Battery died after two days.'] -> ['positive', 'negative']",
         ],
-        input_type=ListType(element=Text),
-        output_type=ListType(element=Literal(("positive", "negative"))),
+        input_type=list_type(Text),
+        output_type=list_type(literal_type(("positive", "negative"))),
         process=Map(fn=Classify(labels=("positive", "negative"))),
     ),
     task(
@@ -576,10 +664,28 @@ TASK_LIBRARY: List[TaskSpec] = [
                 must_include=("entity1", "relationship", "entity2"),
             ),
         ),
-        output_type=ListType(element=TypePrimitive("Relationship")),
+        output_type=list_type(TypePrimitive("Relationship")),
     ),
 ]
 
+
+def describe(op: Composable, indent: int = 0) -> str:
+    """Return a multi-line description of ``op`` and its children."""
+
+    pad: str = "  " * indent
+    lines: List[str] = [f"{pad}{repr(op)}"]
+    if isinstance(op, Sequential):
+        lines.append(describe(op.first, indent + 1))
+        lines.append(describe(op.second, indent + 1))
+    elif isinstance(op, Parallel):
+        lines.append(describe(op.left, indent + 1))
+        lines.append(describe(op.right, indent + 1))
+    elif isinstance(op, Conditional):
+        lines.append(describe(op.if_true, indent + 1))
+        lines.append(describe(op.if_false, indent + 1))
+    elif isinstance(op, Iterative):
+        lines.append(describe(op.body, indent + 1))
+    return "\n".join(lines)
 
 __all__: List[str] = [
     "TASK_LIBRARY",
@@ -589,6 +695,12 @@ __all__: List[str] = [
     "get_type",
     "ListType",
     "Literal",
+    "TupleType",
+    "UnionType",
+    "list_type",
+    "literal_type",
+    "tuple_type",
+    "union_type",
     "Map",
     "Filter",
     "Reduce",
@@ -596,6 +708,7 @@ __all__: List[str] = [
     "Parallel",
     "Conditional",
     "Iterative",
+    "describe",
     "FreeForm",
     "NaturalSpec",
 ]

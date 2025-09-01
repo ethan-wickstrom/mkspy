@@ -5,18 +5,27 @@ from typing import Any, List
 from mkspy.task_library import (
     Classify,
     Conditional,
-    get_type,
-    ListType,
-    Literal,
-    Map,
-    Number,
     Parallel,
     Sequential,
     TaskSpec,
     Text,
+    Number,
     TupleType,
+    UnionType,
+    TypePrimitive,
+    Operation,
     _ensure_composable,
+    describe,
+    get_type,
+    list_type,
+    literal_type,
+    union_type,
+    Map,
+    Filter,
+    Reduce,
 )
+from dataclasses import dataclass
+import dspy
 from mkspy.migrate import dict_to_spec
 
 
@@ -24,8 +33,8 @@ from mkspy.migrate import dict_to_spec
 def test_map_output_type(labels: list[str]) -> None:
     cls: Classify = Classify(labels=tuple(labels))
     m: Map = Map(fn=cls)
-    assert m.input_type == ListType(Text)
-    assert m.output_type == ListType(Literal(tuple(labels)))
+    assert m.input_type is list_type(Text)
+    assert m.output_type is list_type(literal_type(tuple(labels)))
 
 
 def test_parallel_substitution() -> None:
@@ -63,8 +72,19 @@ def test_migration() -> None:
     assert spec.description == "Echo text"
 
 
+def test_migration_validation_error() -> None:
+    with pytest.raises(ValueError):
+        dict_to_spec({"cases": []})
+
+
 def test_type_primitive_singleton() -> None:
     assert get_type("Text") is Text
+
+
+def test_type_registry_collision() -> None:
+    TypePrimitive("Foo")
+    with pytest.raises(ValueError):
+        TypePrimitive("Foo")
 
 
 def test_conditional_requires_callable() -> None:
@@ -94,9 +114,71 @@ def test_ensure_composable_error() -> None:
 def test_map_to_module_executes() -> None:
     cls: Classify = Classify(labels=("a",))
     m: Map = Map(fn=cls)
-    module = m.to_module()
-    result: List[Any] = module(["x"])
+    result: List[Any] = m(["x"])
     assert result == [None]
+
+
+def test_map_empty_input() -> None:
+    cls: Classify = Classify(labels=("a",))
+    m: Map = Map(fn=cls)
+    assert m([]) == []
+
+
+def test_filter_empty_input() -> None:
+    cls: Classify = Classify(labels=("a",))
+    f: Filter = Filter(predicate=cls)
+    assert f([]) == []
+
+
+def test_reduce_empty_raises() -> None:
+    cls: Classify = Classify(labels=("a",))
+    r: Reduce = Reduce(fn=cls)
+    with pytest.raises(ValueError, match="empty input"):
+        r([])
+
+
+@dataclass(frozen=True)
+class Fail(Operation):
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "input_type", Text)
+        object.__setattr__(self, "output_type", Text)
+
+    def _build_module(self) -> dspy.Module:
+        class _Fail(dspy.Module):
+            def forward(self, value: Any) -> Any:
+                raise ValueError("boom")
+
+        return _Fail()
+
+
+def test_error_propagation_sequential() -> None:
+    fail: Fail = Fail()
+    cls: Classify = Classify(labels=("a",))
+    seq: Sequential = Sequential(first=fail, second=cls)
+    with pytest.raises(ValueError, match="boom"):
+        seq("x")
+
+
+def test_module_reusability() -> None:
+    cls: Classify = Classify(labels=("a",))
+    m1 = cls.to_module()
+    m2 = cls.to_module()
+    assert m1 is m2
+    assert cls("x") is None
+
+
+def test_union_type_singleton() -> None:
+    u1: UnionType = union_type((Text, Number))
+    u2: UnionType = union_type((Text, Number))
+    assert u1 is u2
+
+
+def test_describe_outputs_tree() -> None:
+    first: Classify = Classify(labels=("a",))
+    second: Classify = Classify(labels=("b",), input_type_override=literal_type(("a",)))
+    seq: Sequential = Sequential(first=first, second=second)
+    text: str = describe(seq)
+    assert "Sequential" in text and text.count("Classify") >= 2
 
 
 def test_classify_to_module_instance() -> None:
