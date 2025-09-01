@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import re
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import (

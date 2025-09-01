@@ -1,9 +1,3 @@
-from __future__ import annotations
-
-import logging
-from dataclasses import dataclass, field
-from typing import Any
-
 """Declarative DSPy program model and minimal codegen.
 
 This module defines a small, typed AST for describing DSPy programs and a
@@ -11,6 +5,12 @@ deterministic renderer to Python. It keeps behavior (Signatures) separate from
 strategy (Modules), aligning with DSPy principles and enabling optimizers to
 operate later without changing the frontend program.
 """
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Any
 
 from .codegen import CodeBuilder
 
