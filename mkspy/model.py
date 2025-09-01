@@ -4,11 +4,20 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from codegen import CodeBuilder
+"""Declarative DSPy program model and minimal codegen.
+
+This module defines a small, typed AST for describing DSPy programs and a
+deterministic renderer to Python. It keeps behavior (Signatures) separate from
+strategy (Modules), aligning with DSPy principles and enabling optimizers to
+operate later without changing the frontend program.
+"""
+
+from .codegen import CodeBuilder
 
 logger = logging.getLogger(__name__)
 
-SAFE_MODULE_TYPES = ("Predict", "ChainOfThought", "ReAct")
+# Allowed dspy.Module constructors we support when wiring in __init__.
+SAFE_MODULE_TYPES: tuple[str, ...] = ("Predict", "ChainOfThought", "ReAct")
 
 
 # -----------------------------
@@ -255,10 +264,20 @@ class DSPyProgram:
             # wire modules in __init__
             if self.bound_modules:
                 init_m = next(m for m in self.main_class.methods if m.name == "__init__")
+                # validate bindings upfront
+                sig_names = {s.name for s in self.signatures}
                 for bind in self.bound_modules:
+                    if bind.module_type not in SAFE_MODULE_TYPES:
+                        raise ValueError(
+                            f"Unsupported module_type '{bind.module_type}'. Allowed: {SAFE_MODULE_TYPES}"
+                        )
+                    if bind.signature_name not in sig_names:
+                        raise ValueError(
+                            f"Unknown signature '{bind.signature_name}' for binding '{bind.module_name}'"
+                        )
                     ctor = f"dspy.{bind.module_type}({bind.signature_name}"
                     for k, v in bind.parameters.items():
-                        ctor += f", {k}={repr(v) if isinstance(v, str) else v}"
+                        ctor += f", {k}={repr(v)}"
                     ctor += ")"
                     init_m.body.append(DSPyAssignment(f"self.{bind.module_name}", ctor))
 
