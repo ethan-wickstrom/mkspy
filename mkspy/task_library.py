@@ -1,7 +1,167 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum
+from functools import singledispatch
 import ast
-from typing import Any, Dict, List, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    Tuple,
+    TypeVar,
+    Protocol,
+)
+
+
+T = TypeVar("T")
+U = TypeVar("U")
+V = TypeVar("V")
+
+
+class Expr(Protocol[T]):
+    """Syntax node protocol."""
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class Value(Generic[T]):
+    data: T
+
+
+@dataclass(frozen=True, slots=True)
+class Reference(Generic[T]):
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class Transform(Generic[T, U]):
+    func: Callable[[T], U]
+
+
+@dataclass(frozen=True, slots=True)
+class Aggregation(Generic[T, U]):
+    func: Callable[[Iterable[T]], U]
+
+
+@dataclass(frozen=True, slots=True)
+class Constraint(Generic[T]):
+    predicate: Callable[[T], bool]
+
+
+@dataclass(frozen=True, slots=True)
+class Quality(Generic[T]):
+    measure: Callable[[T], float]
+
+
+@dataclass(slots=True)
+class Scope:
+    bindings: Dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class Sequential(Generic[T, U]):
+    source: Expr[T]
+    transforms: List[Transform[Any, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class Parallel(Generic[T]):
+    branches: List[Expr[T]]
+
+
+@dataclass(frozen=True, slots=True)
+class Conditional(Generic[T]):
+    subject: Expr[Any]
+    constraint: Constraint[Any]
+    on_true: Expr[T]
+    on_false: Expr[T]
+
+
+@dataclass(frozen=True, slots=True)
+class Iterate(Generic[T]):
+    initial: Expr[T]
+    transform: Transform[T, T]
+    condition: Constraint[T]
+
+
+@dataclass(frozen=True, slots=True)
+class Aggregate(Generic[T, U]):
+    aggregator: Aggregation[T, U]
+    inputs: List[Expr[T]]
+
+
+@dataclass(frozen=True, slots=True)
+class Measure(Generic[T]):
+    quality: Quality[T]
+    source: Expr[T]
+
+
+@singledispatch
+def evaluate(expr: object, scope: Scope) -> Any:
+    raise TypeError(f"Unknown expression type: {type(expr)!r}")
+
+
+@evaluate.register
+def _value(expr: Value[T], scope: Scope) -> T:
+    return expr.data
+
+
+@evaluate.register
+def _reference(expr: Reference[T], scope: Scope) -> T:
+    return scope.bindings[expr.name]
+
+
+@evaluate.register
+def _sequential(expr: Sequential[Any, Any], scope: Scope) -> Any:
+    value: Any = evaluate(expr.source, scope)
+    for transform in expr.transforms:
+        value = transform.func(value)
+    return value
+
+
+@evaluate.register
+def _parallel(expr: Parallel[Any], scope: Scope) -> Tuple[Any, ...]:
+    results: List[Any] = [evaluate(branch, scope) for branch in expr.branches]
+    return tuple(results)
+
+
+@evaluate.register
+def _conditional(expr: Conditional[T], scope: Scope) -> T:
+    candidate: Any = evaluate(expr.subject, scope)
+    if expr.constraint.predicate(candidate):
+        return evaluate(expr.on_true, scope)
+    return evaluate(expr.on_false, scope)
+
+
+@evaluate.register
+def _iterate(expr: Iterate[T], scope: Scope) -> T:
+    value: T = evaluate(expr.initial, scope)
+    while not expr.condition.predicate(value):
+        value = expr.transform.func(value)
+    return value
+
+
+@evaluate.register
+def _aggregate(expr: Aggregate[Any, Any], scope: Scope) -> Any:
+    items: List[Any] = [evaluate(item, scope) for item in expr.inputs]
+    return expr.aggregator.func(items)
+
+
+@evaluate.register
+def _measure(expr: Measure[T], scope: Scope) -> float:
+    subject: T = evaluate(expr.source, scope)
+    return expr.quality.measure(subject)
+
+
+class Polarity(Enum):
+    POSITIVE = "POSITIVE"
+    NEGATIVE = "NEGATIVE"
+    NEUTRAL = "NEUTRAL"
+
 
 Example = Tuple[Any, Any]
 
@@ -23,75 +183,26 @@ def task(description: str, cases: List[str]) -> Dict[str, Any]:
     return {"description": description, "test_cases": parsed}
 
 
-TASK_LIBRARY: List[Dict[str, Any]] = [
-    task(
-        "Classify sentiment in product reviews",
-        [
-            "The phone is fantastic and works great. -> positive",
-            "Battery died after two days. -> negative",
-        ],
-    ),
-    task(
-        "Extract top keywords from a paragraph",
-        [
-            "Python is a popular programming language for data science. -> ['Python', 'programming', 'data science']",
-            "Solar and wind energy are leading renewable sources. -> ['Solar', 'wind energy', 'renewable sources']",
-        ],
-    ),
-    task(
-        "Translate English sentences to Spanish",
-        [
-            "The library opens at nine o'clock. -> 'La biblioteca abre a las nueve.'",
-            "Where is the nearest train station? -> '¿Dónde está la estación de tren más cercana?'",
-        ],
-    ),
-    task(
-        "Summarize a news article in one sentence",
-        [
-            "NASA successfully launched a new satellite to monitor climate change, aiming to provide more accurate data on global warming trends. -> 'NASA launched a satellite to monitor climate change.'",
-            "The city council approved a new park downtown, promising more green space for residents. -> 'The city council approved a downtown park to add green space.'",
-        ],
-    ),
-    task(
-        "Identify named entities in a text",
-        [
-            "Barack Obama was born in Hawaii and served as President of the United States. -> ['Barack Obama', 'Hawaii', 'United States']",
-            "Apple released the first iPhone in 2007 under Steve Jobs. -> ['Apple', 'iPhone', '2007', 'Steve Jobs']",
-        ],
-    ),
-    task(
-        "Convert CSV data to a list of dictionaries",
-        [
-            """name,age\nAlice,30\nBob,25 -> [{'name': 'Alice', 'age': '30'}, {'name': 'Bob', 'age': '25'}]""",
-            """city,population\nParis,2148000\nRome,2873000 -> [{'city': 'Paris', 'population': '2148000'}, {'city': 'Rome', 'population': '2873000'}]""",
-        ],
-    ),
-    task(
-        "Generate SQL query from natural language request",
-        [
-            "Retrieve names of employees hired after 2020. -> 'SELECT name FROM employees WHERE hire_date > \'2020-12-31\';'",
-            "Count how many orders were completed in March 2024. -> 'SELECT COUNT(*) FROM orders WHERE completed_at >= \'2024-03-01\' AND completed_at < \'2024-04-01\';'",
-        ],
-    ),
-    task(
-        "Answer multi-hop questions using provided documents",
-        [
-            "{'question': 'Which city is the capital of the country whose national animal is the kiwi?', 'documents': ['The kiwi is the national bird of New Zealand.', 'Wellington is the capital of New Zealand.', 'Canberra is the capital of Australia.']} -> 'Wellington (doc2)'",
-        ],
-    ),
-    task(
-        "Generate Python code from a specification",
-        [
-            "Write a function that returns the nth Fibonacci number using iteration. -> 'def fibonacci(n: int) -> int:\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a'",
-        ],
-    ),
-    task(
-        "Identify bugs in Python code",
-        [
-            "def add_item(item, items=[])\n    items.append(item)\n    return items -> [\"mutable default argument 'items'\"]",
-        ],
-    ),
-]
+TASK_LIBRARY: List[Dict[str, Any]] = [task("Increment number", ["1 -> 2"])]
 
-__all__: List[str] = ["TASK_LIBRARY", "task"]
+
+__all__: List[str] = [
+    "Value",
+    "Reference",
+    "Transform",
+    "Aggregation",
+    "Constraint",
+    "Quality",
+    "Scope",
+    "Sequential",
+    "Parallel",
+    "Conditional",
+    "Iterate",
+    "Aggregate",
+    "Measure",
+    "Polarity",
+    "evaluate",
+    "task",
+    "TASK_LIBRARY",
+]
 
