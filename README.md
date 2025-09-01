@@ -24,13 +24,3 @@ pipeline: Sequential = Sequential(first=first, second=second)
 assert pipeline.input_type is Text
 assert pipeline.output_type == Literal(("important", "unimportant"))
 ```
-
-## Migration
-
-Convert legacy dictionary tasks using the helper:
-
-```python
-from mkspy.migrate import dict_to_spec
-
-spec = dict_to_spec({"description": "old", "cases": ["1->2"]})
-```

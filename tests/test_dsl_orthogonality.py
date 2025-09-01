@@ -26,7 +26,6 @@ from mkspy.task_library import (
 )
 from dataclasses import dataclass
 import dspy
-from mkspy.migrate import dict_to_spec
 
 
 @given(st.lists(st.text(min_size=1), min_size=1, max_size=3))
@@ -60,21 +59,6 @@ def test_sequential_type_mismatch() -> None:
     b: Classify = Classify(labels=("y",))
     with pytest.raises(TypeError):
         Sequential(first=a, second=b)
-
-
-def test_migration() -> None:
-    legacy: dict[str, object] = {
-        "description": "Echo text",
-        "cases": ["\"a\" -> \"a\""]
-    }
-    spec: TaskSpec = dict_to_spec(legacy)
-    assert isinstance(spec, TaskSpec)
-    assert spec.description == "Echo text"
-
-
-def test_migration_validation_error() -> None:
-    with pytest.raises(ValueError):
-        dict_to_spec({"cases": []})
 
 
 def test_type_primitive_singleton() -> None:
