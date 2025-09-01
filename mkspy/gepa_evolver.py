@@ -6,9 +6,9 @@ import json
 import dspy
 from dspy import GEPA
 
-from meta_module import DSPyProgramGenerator
-from metrics import ProgramGenerationMetric
-from task_library import TaskSpec
+from .meta_module import DSPyProgramGenerator
+from .metrics import ProgramGenerationMetric
+from .task_library import TaskSpec
 
 
 class GEPAEvolver:
