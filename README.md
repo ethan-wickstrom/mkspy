@@ -7,3 +7,4 @@ Meta-optimization framework for generating DSPy programs. This project provides:
 - `GEPAEvolver`: optimizer using GEPA as the sole evolution strategy.
 - Smart mutation strategies responding to feedback.
 - A small task library for experiments.
+- An orthogonal task DSL enabling local compositional specifications.

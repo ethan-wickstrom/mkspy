@@ -1,7 +1,203 @@
 from __future__ import annotations
 
 import ast
-from typing import Any, Dict, List, Tuple
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Protocol, Sequence, Tuple, Union
+
+
+# ---------------------------------------------------------------------------
+# Primitives
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TypePrimitive:
+    """Atomic type descriptor contributing only data shape."""
+
+    name: str
+
+
+Text: TypePrimitive = TypePrimitive("Text")
+Number: TypePrimitive = TypePrimitive("Number")
+DictType: TypePrimitive = TypePrimitive("Dict")
+
+
+@dataclass(frozen=True)
+class ListType(TypePrimitive):
+    element: TypePrimitive
+    name: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", f"List[{self.element.name}]")
+
+
+@dataclass(frozen=True)
+class Literal(TypePrimitive):
+    values: Tuple[str, ...]
+    name: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", f"Literal{self.values}")
+
+
+# ---------------------------------------------------------------------------
+# Operations
+# ---------------------------------------------------------------------------
+
+
+class Composable(Protocol):
+    @property
+    def input_type(self) -> TypePrimitive: ...
+
+    @property
+    def output_type(self) -> TypePrimitive: ...
+
+
+@dataclass(frozen=True)
+class Operation:
+    input_type: TypePrimitive
+    output_type: TypePrimitive
+
+
+@dataclass(frozen=True)
+class Map(Operation):
+    fn: Operation
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "input_type", ListType(self.fn.input_type))
+        object.__setattr__(self, "output_type", ListType(self.fn.output_type))
+
+
+@dataclass(frozen=True)
+class Filter(Operation):
+    predicate: Operation
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "input_type", ListType(self.predicate.input_type))
+        object.__setattr__(self, "output_type", ListType(self.predicate.input_type))
+
+
+@dataclass(frozen=True)
+class Reduce(Operation):
+    fn: Operation
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "input_type", ListType(self.fn.input_type))
+        object.__setattr__(self, "output_type", self.fn.output_type)
+
+
+# ---------------------------------------------------------------------------
+# Composition operators
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Sequential(Operation):
+    first: Composable
+    second: Composable
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        if self.first.output_type != self.second.input_type:
+            raise TypeError("Type mismatch in Sequential")
+        object.__setattr__(self, "input_type", self.first.input_type)
+        object.__setattr__(self, "output_type", self.second.output_type)
+
+
+@dataclass(frozen=True)
+class Parallel(Operation):
+    left: Composable
+    right: Composable
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        if self.left.input_type != self.right.input_type:
+            raise TypeError("Type mismatch in Parallel")
+        tuple_name: str = (
+            f"Tuple[{self.left.output_type.name}, {self.right.output_type.name}]"
+        )
+        object.__setattr__(self, "input_type", self.left.input_type)
+        object.__setattr__(self, "output_type", TypePrimitive(tuple_name))
+
+
+@dataclass(frozen=True)
+class Conditional(Operation):
+    condition: str
+    if_true: Composable
+    if_false: Composable
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        if (
+            self.if_true.input_type != self.if_false.input_type
+            or self.if_true.output_type != self.if_false.output_type
+        ):
+            raise TypeError("Branch type mismatch")
+        object.__setattr__(self, "input_type", self.if_true.input_type)
+        object.__setattr__(self, "output_type", self.if_true.output_type)
+
+
+@dataclass(frozen=True)
+class Iterative(Operation):
+    body: Composable
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "input_type", self.body.input_type)
+        object.__setattr__(self, "output_type", self.body.output_type)
+
+
+# ---------------------------------------------------------------------------
+# Non-discrete specifications
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FreeForm:
+    shape: str
+    must_include: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class NaturalSpec:
+    domain: str
+    goal: str
+    constraints: Tuple[str, ...] = ()
+    output_format: Optional[FreeForm] = None
+
+
+Process = Union[Composable, NaturalSpec]
+
+
+# ---------------------------------------------------------------------------
+# Task specification
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TaskSpec:
+    description: str
+    input: Optional[TypePrimitive]
+    process: Optional[Process]
+    output: Optional[TypePrimitive]
+    test_cases: Sequence[Tuple[Any, Any]] = ()
+    expected_signature: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Helpers for simple task construction
+# ---------------------------------------------------------------------------
+
 
 Example = Tuple[Any, Any]
 
@@ -18,80 +214,83 @@ def _case(raw: str) -> Example:
     return _parse_value(left.strip()), _parse_value(right.strip())
 
 
-def task(description: str, cases: List[str]) -> Dict[str, Any]:
+def task(
+    description: str,
+    cases: Sequence[str],
+    *,
+    input_type: Optional[TypePrimitive] = None,
+    output_type: Optional[TypePrimitive] = None,
+    process: Optional[Process] = None,
+) -> TaskSpec:
     parsed: List[Example] = [_case(c) for c in cases]
-    return {"description": description, "test_cases": parsed}
+    return TaskSpec(
+        description=description,
+        input=input_type,
+        process=process,
+        output=output_type,
+        test_cases=parsed,
+    )
 
 
-TASK_LIBRARY: List[Dict[str, Any]] = [
+# ---------------------------------------------------------------------------
+# Example task library
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Classify(Operation):
+    labels: Tuple[str, ...]
+    input_type: TypePrimitive = field(init=False)
+    output_type: TypePrimitive = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "input_type", Text)
+        object.__setattr__(self, "output_type", Literal(self.labels))
+
+
+TASK_LIBRARY: List[TaskSpec] = [
     task(
         "Classify sentiment in product reviews",
         [
-            "The phone is fantastic and works great. -> positive",
-            "Battery died after two days. -> negative",
+            "['The phone is fantastic and works great.', 'Battery died after two days.'] -> ['positive', 'negative']",
         ],
+        input_type=ListType(element=Text),
+        output_type=ListType(element=Literal(("positive", "negative"))),
+        process=Map(fn=Classify(labels=("positive", "negative"))),
     ),
     task(
-        "Extract top keywords from a paragraph",
-        [
-            "Python is a popular programming language for data science. -> ['Python', 'programming', 'data science']",
-            "Solar and wind energy are leading renewable sources. -> ['Solar', 'wind energy', 'renewable sources']",
-        ],
-    ),
-    task(
-        "Translate English sentences to Spanish",
-        [
-            "The library opens at nine o'clock. -> 'La biblioteca abre a las nueve.'",
-            "Where is the nearest train station? -> '¿Dónde está la estación de tren más cercana?'",
-        ],
-    ),
-    task(
-        "Summarize a news article in one sentence",
-        [
-            "NASA successfully launched a new satellite to monitor climate change, aiming to provide more accurate data on global warming trends. -> 'NASA launched a satellite to monitor climate change.'",
-            "The city council approved a new park downtown, promising more green space for residents. -> 'The city council approved a downtown park to add green space.'",
-        ],
-    ),
-    task(
-        "Identify named entities in a text",
-        [
-            "Barack Obama was born in Hawaii and served as President of the United States. -> ['Barack Obama', 'Hawaii', 'United States']",
-            "Apple released the first iPhone in 2007 under Steve Jobs. -> ['Apple', 'iPhone', '2007', 'Steve Jobs']",
-        ],
-    ),
-    task(
-        "Convert CSV data to a list of dictionaries",
-        [
-            """name,age\nAlice,30\nBob,25 -> [{'name': 'Alice', 'age': '30'}, {'name': 'Bob', 'age': '25'}]""",
-            """city,population\nParis,2148000\nRome,2873000 -> [{'city': 'Paris', 'population': '2148000'}, {'city': 'Rome', 'population': '2873000'}]""",
-        ],
-    ),
-    task(
-        "Generate SQL query from natural language request",
-        [
-            "Retrieve names of employees hired after 2020. -> 'SELECT name FROM employees WHERE hire_date > \'2020-12-31\';'",
-            "Count how many orders were completed in March 2024. -> 'SELECT COUNT(*) FROM orders WHERE completed_at >= \'2024-03-01\' AND completed_at < \'2024-04-01\';'",
-        ],
-    ),
-    task(
-        "Answer multi-hop questions using provided documents",
-        [
-            "{'question': 'Which city is the capital of the country whose national animal is the kiwi?', 'documents': ['The kiwi is the national bird of New Zealand.', 'Wellington is the capital of New Zealand.', 'Canberra is the capital of Australia.']} -> 'Wellington (doc2)'",
-        ],
-    ),
-    task(
-        "Generate Python code from a specification",
-        [
-            "Write a function that returns the nth Fibonacci number using iteration. -> 'def fibonacci(n: int) -> int:\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a'",
-        ],
-    ),
-    task(
-        "Identify bugs in Python code",
-        [
-            "def add_item(item, items=[])\n    items.append(item)\n    return items -> [\"mutable default argument 'items'\"]",
-        ],
+        "Determine relationships between entities",
+        [],
+        input_type=Text,
+        process=NaturalSpec(
+            domain="knowledge_graph",
+            goal="determine relationships",
+            constraints=("use commonsense reasoning",),
+            output_format=FreeForm(
+                shape="triples",
+                must_include=("entity1", "relationship", "entity2"),
+            ),
+        ),
+        output_type=ListType(element=TypePrimitive("Relationship")),
     ),
 ]
 
-__all__: List[str] = ["TASK_LIBRARY", "task"]
+
+__all__: List[str] = [
+    "TASK_LIBRARY",
+    "task",
+    "TaskSpec",
+    "TypePrimitive",
+    "ListType",
+    "Literal",
+    "Map",
+    "Filter",
+    "Reduce",
+    "Sequential",
+    "Parallel",
+    "Conditional",
+    "Iterative",
+    "FreeForm",
+    "NaturalSpec",
+]
 
