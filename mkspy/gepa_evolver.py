@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
-from typing import Any, Dict, List, Tuple
 import json
 import dspy
 from dspy import GEPA
@@ -25,9 +24,7 @@ class GEPAEvolver:
         self.metric: Any = ProgramGenerationMetric(test_cases=self._extract_test_cases())
 
     def evolve(self) -> dspy.Module:
-    def evolve(self) -> dspy.Module:
         optimizer: GEPA = GEPA(
-            metric=self.metric,
             metric=self.metric,
             track_stats=True,
             track_best_outputs=True,
@@ -56,7 +53,6 @@ class GEPAEvolver:
                 cases.append(case)
         return cases
 
-    def _save_results(self, optimized_generator: dspy.Module) -> None:
     def _save_results(self, optimized_generator: dspy.Module) -> None:
         optimized_generator.save(self.output_dir / "optimized_generator", save_program=True)
         examples_dir: Path = self.output_dir / "generated_programs"
