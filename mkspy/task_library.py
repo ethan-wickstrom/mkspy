@@ -727,6 +727,16 @@ def task(
 ) -> TaskSpec:
     """Build a TaskSpec from simple string cases."""
 
+def task(
+    description: str,
+    cases: Sequence[str],
+    *,
+    input_type: Optional[TypePrimitive] = None,
+    output_type: Optional[TypePrimitive] = None,
+    process: Optional[Process] = None,
+) -> TaskSpec:
+    """Build a TaskSpec from simple string cases."""
+
     parsed: List[Example] = [_case(c) for c in cases]
     proc_checked: Optional[Process] = None
     if process is not None:
@@ -781,6 +791,7 @@ TASK_LIBRARY: List[TaskSpec] = [
     task(
         "Classify sentiment in product reviews",
         [
+            "['The phone is fantastic and works great.', 'Battery died after two days.'] -> ['positive', 'negative']",
             "['The phone is fantastic and works great.', 'Battery died after two days.'] -> ['positive', 'negative']",
         ],
         input_type=list_type(Text),
