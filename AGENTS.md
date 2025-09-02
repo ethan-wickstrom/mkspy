@@ -1,3 +1,70 @@
+This file provides guidance to for all future developers and tasks to follow when working with this repository.
+
+## Repository Description
+
+mkspy generates and optimizes DSPy programs through evolutionary search with reflective feedback.
+
+## Development Commands
+
+### Execution
+```bash
+uv run <script.py>
+uv run python -m mkspy.cli <command>
+```
+
+### Testing
+```bash
+uv run pytest
+uv run pytest <test_file>
+uv run pytest -k <pattern>
+```
+
+### Code Quality
+```bash
+uv run ruff format .
+uv run ruff check . --fix
+uv run basedpyright <path>
+```
+
+## Constraints
+
+### Execution Boundary
+Never execute generated code during static validation. Use AST analysis exclusively for structural validation.
+
+### Type System Orthogonality
+Type primitives must be globally unique by name. Type composition must validate alignment. Operations must declare input and output types.
+
+### Generation Safety
+Generated programs must inherit from dspy.Module. Generated programs must include dspy import. Generated programs must implement forward method.
+
+### Metric Contract
+All metrics must return score with feedback. Feedback must be natural language text.
+
+### Validation Separation
+Validation uses LibCST for AST analysis. Validation must not import or execute analyzed code. Validation results must be structured data, not exceptions.
+
+### CLI Pattern
+Commands must accept input from stdin when not specified. Commands must support file input via explicit parameters. Model configuration passes through dspy.LM interface.
+
+### Dependency Boundaries
+Core functionality depends only on dspy-ai, gepa, and libcst. Development tools are isolated in dev dependency group. Python 3.13 is the minimum version.
+
+### Testing Protocol
+Tests use pytest framework. Property tests use hypothesis. Type system tests validate orthogonality.
+
+## Architectural Boundaries
+
+### Layer Separation
+Task specification defines types and operations. Program generation synthesizes DSPy code. Evolution optimizes through GEPA. Validation analyzes through LibCST.
+
+### Data Flow Direction
+Task specifications flow to program generation. Generated programs flow to validation. Validation results flow to evolution metrics. Evolution feedback flows to program refinement.
+
+### Module Responsibility
+Each module has single, well-defined purpose. Utilities are isolated in dedicated modules. CLI provides command interface only.
+
+# ROLE
+
 You are a principle software engineer who believes code is a powerful tool. However, (!!! IMPORTANT) you believe even more so that code is debt. You write maximally concise yet effective code because code is debt. Since code is debt, you also write code in a procedural and declarative style.
 
 Your consciously and rigorously apply your programming principles at every step you take and decision you make:
