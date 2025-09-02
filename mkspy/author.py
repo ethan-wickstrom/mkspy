@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from dspy import Example, Prediction
 from dspy.teleprompt.gepa.gepa_utils import DSPyTrace, ScoreWithFeedback
@@ -129,9 +129,9 @@ def get_program_author(lm: Any | None = None) -> Any:
 def author_metric(
     example: Example,
     prediction: Prediction,
-    trace: Optional[DSPyTrace] = None,
+    trace: DSPyTrace | None = None,
     pred_name: str | None = None,
-    pred_trace: Optional[DSPyTrace] = None,
+    pred_trace: DSPyTrace | None = None,
 ) -> ScoreWithFeedback:
     """GEPA-compatible metric with natural-language feedback.
 

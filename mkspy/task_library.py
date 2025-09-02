@@ -6,15 +6,11 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import (
     Any,
-    Callable,
-    List,
-    Optional,
     Protocol,
-    Sequence,
-    Tuple,
     cast,
     runtime_checkable,
 )
+from collections.abc import Callable, Sequence
 
 import dspy
 
@@ -24,15 +20,15 @@ import dspy
 # ---------------------------------------------------------------------------
 
 
-_TYPE_REGISTRY: dict[str, "TypePrimitive"] = {}
+_TYPE_REGISTRY: dict[str, TypePrimitive] = {}
 _TYPE_LOCK: Lock = Lock()
 
 
-def _register_type(tp: "TypePrimitive") -> None:
+def _register_type(tp: TypePrimitive) -> None:
     """Store ``tp`` in the registry, detecting name collisions."""
 
     with _TYPE_LOCK:
-        existing: Optional[TypePrimitive] = _TYPE_REGISTRY.get(tp.name)
+        existing: TypePrimitive | None = _TYPE_REGISTRY.get(tp.name)
         if existing is not None:
             if existing is not tp:
                 raise ValueError(
@@ -42,7 +38,7 @@ def _register_type(tp: "TypePrimitive") -> None:
             _TYPE_REGISTRY[tp.name] = tp
 
 
-def get_type(name: str) -> "TypePrimitive":
+def get_type(name: str) -> TypePrimitive:
     """Retrieve a previously registered type primitive by name."""
 
     return _TYPE_REGISTRY[name]
@@ -88,7 +84,7 @@ class ListType(TypePrimitive):
 class Literal(TypePrimitive):
     """Type constrained to one of a finite set of string values."""
 
-    values: Tuple[str, ...]
+    values: tuple[str, ...]
     name: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -100,7 +96,7 @@ class Literal(TypePrimitive):
 class TupleType(TypePrimitive):
     """Type representing a fixed-length tuple of heterogeneous elements."""
 
-    elements: Tuple[TypePrimitive, ...]
+    elements: tuple[TypePrimitive, ...]
     name: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -113,7 +109,7 @@ class TupleType(TypePrimitive):
 class UnionType(TypePrimitive):
     """Type representing a value that may be one of several types."""
 
-    options: Tuple[TypePrimitive, ...]
+    options: tuple[TypePrimitive, ...]
     name: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -122,7 +118,7 @@ class UnionType(TypePrimitive):
         super().__post_init__()
 
 
-def literal_type(values: Tuple[str, ...]) -> TypePrimitive:
+def literal_type(values: tuple[str, ...]) -> TypePrimitive:
     """Return canonical :class:`Literal` for ``values``."""
 
     name: str = f"Literal{values}"
@@ -142,7 +138,7 @@ def list_type(element: TypePrimitive) -> ListType:
         return ListType(element)
 
 
-def tuple_type(elements: Tuple[TypePrimitive, ...]) -> TupleType:
+def tuple_type(elements: tuple[TypePrimitive, ...]) -> TupleType:
     """Return canonical :class:`TupleType` for ``elements``."""
 
     name: str = "Tuple[" + ", ".join(e.name for e in elements) + "]"
@@ -152,7 +148,7 @@ def tuple_type(elements: Tuple[TypePrimitive, ...]) -> TupleType:
         return TupleType(elements)
 
 
-def union_type(options: Tuple[TypePrimitive, ...]) -> UnionType:
+def union_type(options: tuple[TypePrimitive, ...]) -> UnionType:
     """Return canonical :class:`UnionType` for ``options``."""
 
     name: str = "Union[" + " | ".join(o.name for o in options) + "]"
@@ -202,7 +198,7 @@ class Operation(ToDSPyModule):
 
     input_type: TypePrimitive = field(init=False)
     output_type: TypePrimitive = field(init=False)
-    _module: Optional[dspy.Module] = field(default=None, init=False, repr=False)
+    _module: dspy.Module | None = field(default=None, init=False, repr=False)
 
     def _build_module(self) -> dspy.Module:  # pragma: no cover - abstract
         """Construct a DSPy module implementing the operation."""
@@ -210,7 +206,7 @@ class Operation(ToDSPyModule):
 
     def to_module(self) -> dspy.Module:
         """Return a cached DSPy module, constructing lazily."""
-        module: Optional[dspy.Module] = self._module
+        module: dspy.Module | None = self._module
         if module is None:
             module = self._build_module()
             object.__setattr__(self, "_module", module)
@@ -270,13 +266,13 @@ class Map(Operation):
         # Resolve the single input field name when calling DSPy modules.
         sig = getattr(fn_module, "signature", None)
         input_fields = getattr(sig, "input_fields", None)
-        field_name: Optional[str] = None
+        field_name: str | None = None
         if isinstance(input_fields, dict) and len(input_fields) == 1:
             field_name = next(iter(input_fields.keys()))
 
         class _Map(dspy.Module):
-            def forward(self, items: List[Any]) -> List[Any]:
-                result: List[Any] = []
+            def forward(self, items: list[Any]) -> list[Any]:
+                result: list[Any] = []
                 for item in items:
                     try:
                         if field_name is not None:
@@ -315,13 +311,13 @@ class Filter(Operation):
         # Resolve the single input field name when calling DSPy modules.
         sig = getattr(pred_module, "signature", None)
         input_fields = getattr(sig, "input_fields", None)
-        field_name: Optional[str] = None
+        field_name: str | None = None
         if isinstance(input_fields, dict) and len(input_fields) == 1:
             field_name = next(iter(input_fields.keys()))
 
         class _Filter(dspy.Module):
-            def forward(self, items: List[Any]) -> List[Any]:
-                result: List[Any] = []
+            def forward(self, items: list[Any]) -> list[Any]:
+                result: list[Any] = []
                 for item in items:
                     try:
                         if field_name is not None:
@@ -361,7 +357,7 @@ class Reduce(Operation):
     """
 
     fn: Composable
-    initial: Optional[Any] = None
+    initial: Any | None = None
 
     def __post_init__(self) -> None:
         fn_checked: Composable = _ensure_composable(self.fn)
@@ -385,17 +381,17 @@ class Reduce(Operation):
     def _build_module(self) -> dspy.Module:
         """Return a DSPy module that reduces a list."""
         fn_module: dspy.Module = self.fn.to_module()
-        initial: Optional[Any] = self.initial
+        initial: Any | None = self.initial
 
         class _Reduce(dspy.Module):
-            def forward(self, items: List[Any]) -> Any:
-                iterator: List[Any] = list(items)
+            def forward(self, items: list[Any]) -> Any:
+                iterator: list[Any] = list(items)
                 if not iterator:
                     if initial is None:
                         raise ValueError("Reduce: empty input")
                     return initial
                 acc: Any = iterator[0] if initial is None else initial
-                rest: List[Any] = iterator[1:] if initial is None else iterator
+                rest: list[Any] = iterator[1:] if initial is None else iterator
                 # Enforce that the reducer is binary and accepts two positional args.
                 sig = inspect.signature(fn_module.forward)
                 params = list(sig.parameters.values())
@@ -419,7 +415,7 @@ class Reduce(Operation):
                 # Attempt keyword-mapped call first if the reducer is a DSPy module.
                 sig = getattr(fn_module, "signature", None)
                 input_fields = getattr(sig, "input_fields", None)
-                kw_names: Optional[Tuple[str, str]] = None
+                kw_names: tuple[str, str] | None = None
                 if isinstance(input_fields, dict) and len(input_fields) >= 2:
                     names = list(input_fields.keys())[:2]
                     kw_names = (names[0], names[1])
@@ -477,7 +473,7 @@ class Sequential(Operation):
 
     def _build_module(self) -> dspy.Module:
         """Return a DSPy module composing stages sequentially with flattening."""
-        ops: List[Composable] = []
+        ops: list[Composable] = []
 
         def collect(op: Composable) -> None:
             if isinstance(op, Sequential):
@@ -488,7 +484,7 @@ class Sequential(Operation):
 
         collect(self.first)
         collect(self.second)
-        modules: List[dspy.Module] = [op.to_module() for op in ops]
+        modules: list[dspy.Module] = [op.to_module() for op in ops]
 
         class _Sequential(dspy.Module):
             def forward(self, value: Any) -> Any:
@@ -537,7 +533,7 @@ class Parallel(Operation):
         right_mod: dspy.Module = self.right.to_module()
 
         class _Parallel(dspy.Module):
-            def forward(self, value: Any) -> Tuple[Any, Any]:
+            def forward(self, value: Any) -> tuple[Any, Any]:
                 left_result: Any = left_mod(value)
                 right_result: Any = right_mod(value)
                 return left_result, right_result
@@ -645,7 +641,7 @@ class FreeForm:
     """Non-discrete output template."""
 
     shape: str
-    must_include: Tuple[str, ...] = ()
+    must_include: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -654,8 +650,8 @@ class NaturalSpec:
 
     domain: str
     goal: str
-    constraints: Tuple[str, ...] = ()
-    output_format: Optional[FreeForm] = None
+    constraints: tuple[str, ...] = ()
+    output_format: FreeForm | None = None
 
     def to_module(self) -> dspy.Module:
         """Generate a DSPy module from the natural specification."""
@@ -682,13 +678,13 @@ class TaskSpec:
     """Complete task specification built from primitives."""
 
     description: str
-    input: Optional[TypePrimitive]
-    process: Optional[Process]
-    output: Optional[TypePrimitive]
-    test_cases: Sequence[Tuple[Any, Any]] = ()
-    expected_signature: Optional[str] = None
+    input: TypePrimitive | None
+    process: Process | None
+    output: TypePrimitive | None
+    test_cases: Sequence[tuple[Any, Any]] = ()
+    expected_signature: str | None = None
 
-    def to_module(self) -> Optional[dspy.Module]:
+    def to_module(self) -> dspy.Module | None:
         """Compile the task's process into a DSPy module if possible."""
         if isinstance(self.process, Composable):
             return self.process.to_module()
@@ -702,7 +698,7 @@ class TaskSpec:
 # ---------------------------------------------------------------------------
 
 
-Example = Tuple[Any, Any]
+Example = tuple[Any, Any]
 
 
 def _parse_value(text: str) -> Any:
@@ -721,24 +717,14 @@ def task(
     description: str,
     cases: Sequence[str],
     *,
-    input_type: Optional[TypePrimitive] = None,
-    output_type: Optional[TypePrimitive] = None,
-    process: Optional[Process] = None,
+    input_type: TypePrimitive | None = None,
+    output_type: TypePrimitive | None = None,
+    process: Process | None = None,
 ) -> TaskSpec:
     """Build a TaskSpec from simple string cases."""
 
-def task(
-    description: str,
-    cases: Sequence[str],
-    *,
-    input_type: Optional[TypePrimitive] = None,
-    output_type: Optional[TypePrimitive] = None,
-    process: Optional[Process] = None,
-) -> TaskSpec:
-    """Build a TaskSpec from simple string cases."""
-
-    parsed: List[Example] = [_case(c) for c in cases]
-    proc_checked: Optional[Process] = None
+    parsed: list[Example] = [_case(c) for c in cases]
+    proc_checked: Process | None = None
     if process is not None:
         if isinstance(process, NaturalSpec):
             proc_checked = process
@@ -762,7 +748,7 @@ def task(
 class Classify(Operation):
     """Classify input into one of several labels."""
 
-    labels: Tuple[str, ...]
+    labels: tuple[str, ...]
     input_type_override: TypePrimitive = Text
 
     def __post_init__(self) -> None:
@@ -787,7 +773,7 @@ class Classify(Operation):
         return label
 
 
-TASK_LIBRARY: List[TaskSpec] = [
+TASK_LIBRARY: list[TaskSpec] = [
     task(
         "Classify sentiment in product reviews",
         [
@@ -820,7 +806,7 @@ def describe(op: Composable, indent: int = 0) -> str:
     """Return a multi-line description of ``op`` and its children."""
 
     pad: str = "  " * indent
-    lines: List[str] = [f"{pad}{repr(op)}"]
+    lines: list[str] = [f"{pad}{repr(op)}"]
     if isinstance(op, Sequential):
         lines.append(describe(op.first, indent + 1))
         lines.append(describe(op.second, indent + 1))
@@ -834,7 +820,7 @@ def describe(op: Composable, indent: int = 0) -> str:
         lines.append(describe(op.body, indent + 1))
     return "\n".join(lines)
 
-__all__: List[str] = [
+__all__: list[str] = [
     "TASK_LIBRARY",
     "task",
     "TaskSpec",

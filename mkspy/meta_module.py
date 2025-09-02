@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Literal
 
 import dspy
 from dspy import Signature, InputField, OutputField, Code
@@ -14,7 +15,7 @@ class ProgramSpec(Signature):
     # We favor typed outputs; code is a dspy.Code subtype (python).
     signature: str = OutputField(desc="Signature definition in DSPy style, if known")
     architecture: str = OutputField(desc="Module composition/flow summary")
-    code: Code["python"] = OutputField(desc="Complete DSPy module implementation")
+    code: Code[Literal["python"]] = OutputField(desc="Complete DSPy module implementation")
     is_valid: bool = OutputField(desc="Validation result from static analysis")
     errors: list[str] = OutputField(desc="Validation errors, if any")
 
